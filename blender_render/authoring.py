@@ -47,9 +47,9 @@ def inspect_preset(identifier: str, root: Path) -> dict:
         if doc["format"] == 1:
             doc.update(camera_policy="authored", camera_policy_source="legacy_format_1")
         validate_camera_policy(doc["camera_policy"], doc["style_doc"])
-        return doc
+        return {**doc, "revision": str(doc["revision"])}
     name = preset_id(identifier)
-    return {"format": 1, "id": "builtin/" + name, "revision": 1,
+    return {"format": 1, "id": "builtin/" + name, "revision": "1",
             "style_doc": load_and_validate_style_json(preset_path(name)),
             "description": next(row["description"] for row in catalog() if row["id"] == name)}
 
@@ -84,7 +84,7 @@ def save_preset(identifier: str, style: dict, root: Path, *, description: str,
     previous = inspect_preset(identifier, root) if path.exists() else None
     if previous and not replace:
         raise ValueError("Preset already exists; use --replace to create the next revision")
-    doc = {"format": 2, "camera_policy": camera_policy, "id": identifier, "revision": previous["revision"] + 1 if previous else 1,
+    doc = {"format": 2, "camera_policy": camera_policy, "id": identifier, "revision": int(previous["revision"]) + 1 if previous else 1,
            "description": description, "style_doc": copy.deepcopy(style), "sha256": style_digest(style),
            "required_capabilities": required_capabilities(style), "provenance": provenance or {}}
     data = json.dumps(doc, indent=2, allow_nan=False) + "\n"
@@ -101,7 +101,7 @@ def save_preset(identifier: str, style: dict, root: Path, *, description: str,
             os.link(temp, path)
     finally:
         temp.unlink(missing_ok=True)
-    return {**doc, "path": str(path)}
+    return {**doc, "revision": str(doc["revision"]), "path": str(path)}
 
 
 def list_presets(root: Path) -> list[dict]:
@@ -113,80 +113,46 @@ def list_presets(root: Path) -> list[dict]:
     return entries
 
 
-def reference_brief(image: Path, observations: dict) -> dict:
-    """Bind an agent's visible observations to a PNG, then rank existing designs.
+def reference_brief(image: Path, observations: dict, *, bundle: dict | None = None,
+                    allow_low_fit_approximation: bool = False) -> dict:
+    """Validate PNG provenance, then delegate all preset/fit decisions to D1.
 
-    This is not an image-understanding model. The developer skill requires actual
-    image inspection before supplying observations/overrides. Pixels establish
-    provenance and dimensions; no hidden shader implementation is inferred.
+    The caller records visible descriptors after inspection. No image model,
+    hidden shader inference, pixel transport or reference-only spec hash.
     """
     from PIL import Image
+    from . import engine, selection
     fields = {"representations", "material_family", "palette", "background", "lighting",
-              "edges", "composition", "ligand_treatment", "required_capabilities", "overrides", "notes", "base_preset"}
+              "edges", "composition", "projection", "ligand_treatment", "required_capabilities", "overrides", "notes", "base_preset"}
+    if not isinstance(observations, dict):
+        raise ValueError("Visual brief must be an object")
     unknown = set(observations) - fields
     if unknown:
         raise ValueError("Unsupported visual brief fields: " + ", ".join(sorted(unknown)))
     for key in ("representations", "palette", "required_capabilities"):
         if not isinstance(observations.get(key), list) or not all(isinstance(v, str) for v in observations[key]):
             raise ValueError("Visual brief requires a string list: " + key)
-    if not observations["representations"]:
-        raise ValueError("Visual brief requires observable representations")
-    for key in ("material_family", "background", "lighting", "edges", "composition", "ligand_treatment", "notes", "base_preset"):
+    if not observations["representations"] or not observations.get("material_family"):
+        raise ValueError("Visual brief requires observable representations and material_family")
+    for key in ("notes", "base_preset"):
         if key in observations and not isinstance(observations[key], str):
             raise ValueError("Visual brief field must be text: " + key)
-    if not observations.get("material_family"):
-        raise ValueError("Visual brief requires material_family")
-    with Image.open(image) as png:
+    visual = {key:value for key,value in observations.items()
+              if key not in {"notes", "base_preset", "overrides", "required_capabilities"}}
+    request = selection.SelectionRequest(preset=observations.get("base_preset") or None,
+        visual_brief=visual, hard_requirements={"required_capabilities":observations["required_capabilities"]},
+        overrides=observations.get("overrides", {}), allow_low_fit_approximation=allow_low_fit_approximation)
+    # One byte snapshot for both hash and PNG validation; do not serialize Pillow
+    # metadata, image paths, URLs, or pixels into either returned record.
+    import io
+    data = Path(image).read_bytes()
+    with Image.open(io.BytesIO(data)) as png:
         if png.format != "PNG":
             raise ValueError("Reference must be a PNG")
         dimensions = list(png.size)
         png.verify()
-    brief = {"reference": {"sha256": hashlib.sha256(image.read_bytes()).hexdigest(),
-                           "dimensions": dimensions},
-             "observation_source": "developer image inspection", **copy.deepcopy(observations)}
-    reps = set(observations["representations"])
-    candidates = catalog()
-    overrides = observations.get("overrides", {})
-    if not isinstance(overrides, dict) or not isinstance(overrides.get("materials", {}), dict):
-        raise ValueError("Visual brief overrides and overrides.materials must be objects")
-    if observations.get("base_preset"):
-        chosen = preset_id(observations["base_preset"])
-        candidates = [row for row in candidates if row["id"] == chosen]
-    # A palette override must affect an existing, used material. Adding a new
-    # unused material would validate structurally but would not match the image.
-    applicable = []
-    for row in candidates:
-        candidate = load_and_validate_style_json(preset_path(row["id"]))
-        used = {entry.get("material") for entry in candidate["styles"]}
-        if set(overrides.get("materials", {})) <= used:
-            applicable.append(row)
-    if not applicable:
-        raise ValueError("Palette overrides must name materials used by the selected base preset")
-    candidates = applicable
-    # Representation and material match precede palette adjustments. Stable
-    # catalog order breaks ties; the decision exposes the limits of this ranker.
-    def score(row):
-        return (reps <= set(row["representations"]), row["material_family"] == observations["material_family"],
-                -len(reps ^ set(row["representations"])))
-    base = max(candidates, key=score)
-    requested = set(observations["required_capabilities"])
-    missing_from_base = requested - set(base["required_capabilities"])
-    available = set().union(*(set(row["required_capabilities"]) for row in catalog())) | {"camera.depth_of_field"}
-    resolved = resolve_options({"preset": base["id"], "overrides": overrides}, {})
-    authored = resolved["style_doc"]
-    changed_language = (set(required_capabilities(authored)) - set(base["required_capabilities"]))
-    extensive = bool(set(overrides) & {"styles", "geometry"}) or len(overrides.get("materials", {})) > 2
-    low = (bool(missing_from_base or changed_language or extensive)
-           or not reps <= set(base["representations"]) or base["material_family"] != observations["material_family"])
-    decision = {"preset_id": base["qualified_id"], "preset_revision": base["revision"],
-                "fit": "low" if low else "high", "overrides": overrides,
-                "reasons": ["Developer selected the base after image inspection" if observations.get("base_preset") else
-                            "Ranked applicable representation coverage, then observed material family",
-                            "Requires a dedicated design" if low else "Existing design plus supported parameter overrides"],
-                "unmatched_features": sorted(missing_from_base | changed_language),
-                "unsupported_requirements": sorted(requested - available),
-                "new_preset_recommended": low,
-                "route": "developer/new-preset" if low else "preset-overrides",
-                "resolved_spec_sha256": resolved["render_spec"]["sha256"],
-                "limitations": "Agent observations and a simple catalog rank; no exact-match or automatic vision claim."}
-    return {"visual_brief": brief, "preset_decision": decision}
+    decision = selection.select_preset(request, available_capabilities=engine.CAPABILITIES,
+                                       policy=selection.SelectionPolicy(), bundle=bundle)
+    brief = {"reference": {"sha256":hashlib.sha256(data).hexdigest(), "dimensions":dimensions},
+             "observation_source":"developer image inspection", **copy.deepcopy(observations)}
+    return {"visual_brief":brief, "preset_decision":decision.to_dict()}

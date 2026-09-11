@@ -65,6 +65,7 @@ def test_dof_cannot_be_silently_discarded(style, bundle, tmp_path):
 def test_legacy_read_and_explicit_replacement(style, bundle, tmp_path):
     saved = authoring.save_preset("user/old", style, tmp_path, description="Old", camera_policy="authored")
     path = Path(saved.pop("path"))
+    saved = json.loads(path.read_text())  # Stored revisions remain integers.
     saved.pop("camera_policy")
     saved["format"] = 1
     raw = json.dumps(saved).encode()
@@ -76,7 +77,7 @@ def test_legacy_read_and_explicit_replacement(style, bundle, tmp_path):
     assert old["style_doc"] == resolve_options({"style_doc": style}, bundle)["style_doc"]
     assert path.read_bytes() == raw
     upgraded = authoring.save_preset("user/old", style, tmp_path, description="Updated", replace=True)
-    assert upgraded["format"] == 2 and upgraded["revision"] == 2
+    assert upgraded["format"] == 2 and upgraded["revision"] == "2"
     assert upgraded["camera_policy"] == "preserve_input"
 
 
@@ -120,6 +121,7 @@ def test_capture_rejects_catalog_escape(tmp_path):
 def test_invalid_envelope(style, tmp_path, change, match):
     saved = authoring.save_preset("user/test", style, tmp_path, description="Test")
     path = Path(saved.pop("path"))
+    saved = json.loads(path.read_text())  # Stored revisions remain integers.
     path.write_text(json.dumps(change(saved)))
     with pytest.raises(ValueError, match=match):
         authoring.inspect_preset("user/test", tmp_path)

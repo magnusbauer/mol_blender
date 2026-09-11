@@ -128,7 +128,7 @@ def test_save_restart_reuse_and_revision(style, tmp_path):
         authoring.save_preset("user/macro", style, tmp_path, camera_policy="authored", description="Again")
     style["camera"]["depth_of_field"]["f_stop"] = 4
     new = authoring.save_preset("user/macro", style, tmp_path, camera_policy="authored", description="Revision", replace=True)
-    assert new["revision"] == 2 and new["sha256"] != saved["sha256"]
+    assert new["revision"] == "2" and new["sha256"] != saved["sha256"]
     assert len(authoring.list_presets(tmp_path)) == 15
 
 

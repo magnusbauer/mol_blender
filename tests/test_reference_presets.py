@@ -11,7 +11,7 @@ from blender_render.presets import required_capabilities
 
 
 def base():
-    return json.loads(Path('blender_render/style_preset_1_opaque_pastel.json').read_text())
+    return json.loads(Path(core.__file__).with_name('style_preset_1_opaque_pastel.json').read_text())
 
 
 def test_uniform_polymer_color_survives_multichain_expansion():

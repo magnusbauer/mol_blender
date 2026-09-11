@@ -23,7 +23,9 @@ CONTRACTS = ['test_execution_envelope.py', 'test_gateway_recovery.py', 'test_hpc
              'test_c3_connections.py', 'test_c3_recovery_integration.py', 'test_c3_policy.py', 'test_c3_migrations.py',
              'test_c3_review_regressions.py', 'test_c3_final_boundaries.py',
              'test_c3_blocked_clients.py', 'test_c3_stored_retrieval.py', 'test_c3_ccd_capture.py',
-             'test_developer_ccd_entry.py', 'test_worker_ipc.py', 'test_hpc_outer_ipc.py', 'test_acceptance_ipc.py', 'test_acceptance_diagnostics.py', 'test_compatibility_diagnostics.py']
+             'test_developer_ccd_entry.py', 'test_worker_ipc.py', 'test_hpc_outer_ipc.py', 'test_acceptance_ipc.py', 'test_acceptance_diagnostics.py', 'test_compatibility_diagnostics.py',
+             'test_selection.py', 'test_spec.py', 'test_reference_presets.py', 'test_style_schema.py',
+             'test_developer.py', 'test_developer_policy.py']
 
 
 def run(command, cwd, env, log):
@@ -89,7 +91,26 @@ def main():
             data = archive.read('blender_render/'+name)
             assert hashlib.sha256(data).hexdigest() == digest
             assert data == (ROOT/'blender_render'/name).read_bytes() == (site/'blender_render'/name).read_bytes()
-    evidence = {'wheel_sha256':hashlib.sha256(wheel.read_bytes()).hexdigest(),
+    # Separate interpreter activities belong to this runner, never to the
+    # guarded application. Every probe loads c3_boundary_guard before imports.
+    probes = []
+    for label, package_parent, cwd, reverse, seed in (
+            ('source', ROOT, ROOT, False, '1'),
+            ('source-reordered', ROOT, out, True, '91'),
+            ('staged-reordered', staging, out, True, '17'),
+            ('installed', site, out, False, '103')):
+        probe_env = {**env, 'PYTHONPATH':os.pathsep.join([str(package_parent), str(out/'tests')]),
+                     'PYTHONHASHSEED':seed, 'D1_EXPECT_PACKAGE':str(package_parent/'blender_render')}
+        command = [sys.executable, str(out/'tests/d1_determinism_probe.py')]
+        if reverse:
+            command.append('--reverse')
+        log = out/(label+'-determinism.json')
+        run(command, cwd, probe_env, log)
+        probes.append(json.loads(log.read_text()))
+    assert all(probe == probes[0] for probe in probes), 'D1 catalog/decision determinism failed'
+    evidence = {'catalog_digest':probes[0]['catalog']['digest'],
+                'determinism_interpreters':len(probes), 'determinism_boundary_attempts':[],
+                'wheel_sha256':hashlib.sha256(wheel.read_bytes()).hexdigest(),
                 'engine_build':manifest['engine_build'], 'verified_package_files':len(manifest['files']),
                 'repository_log':'repository.log', 'installed_log':'installed.log',
                 'application_boundaries':'guarded; no real compute',

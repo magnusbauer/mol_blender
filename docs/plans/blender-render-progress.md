@@ -1,5 +1,291 @@
 # Blender Render implementation progress
 
+## D1 independent-review corrections — 2026-09-11
+
+Corrected only the three MAJOR findings from the independent D1 review in
+`blender_bridge-d1`, on `codex/d1-consumer-selection-catalog`. HEAD remains
+`81debf422d3075a5eab62353dec7eb3fac630091`; changes remain uncommitted and
+unpushed. The earlier D1 evidence below is retained as history; these counts and
+package identities supersede it. C3 evidence is unchanged. No D2 work occurred.
+
+**Corrections.** Only five files changed relative to the reviewed D1 candidate:
+`blender_render/selection.py`, `blender_render/presets.py`,
+`tests/test_selection.py`, `docs/preset-selection.md`, and this progress record.
+
+- `_selection_content()` intersects conditions within a molecular selection;
+  `_content()` unions coverage across rendered entries. `polymer + nucleic`
+  establishes nucleic coverage, never protein coverage. False flags add no filter.
+  Exact existing class queries, including `polymer and not nucleic`, support
+  protein narrowing without adding a schema flag or general parser. Unknown
+  queries and additional chain/residue/proximity filters do not assert coverage.
+  Unchanged shipped selections retain documented static coverage.
+- `_effective_camera_policy()` classifies the resolved camera after ordinary
+  resolver precedence. `_evaluate()` checks both requested camera policies against
+  it. Explicit conflicting overrides remain intact, but hard satisfaction and
+  execution compatibility are false, fit is low, and the hash is null.
+- `presets.active_material_controls()` is shared by active-edit validation,
+  palette descriptors and material-model comparison. Paint dispatch consumes
+  nested `paint`; inactive shader siblings such as `base_color` raise typed
+  `StyleValidationError` when explicitly edited. Legacy documents remain intact
+  and inactive values do not count as visual matches. The independent compositor's
+  `glow` control retains its existing validation. Active nested paint tint edits
+  contribute exact `linear_rgb:[r,g,b]` descriptors, without guessing pixel colors.
+  The independent follow-up review also identified inactive non-paint controls.
+  The helper now rejects disconnected attribute/gradient base colors, clay
+  auxiliaries outside the clay branch, and emission colors without an emission
+  consumer. Real shadow/highlight/emission, color-follow and chain-palette
+  consumers remain supported; `_chain_palette_uses_base_color()` reuses the
+  existing pure anchor resolver on copies rather than changing renderer logic.
+  `_color_follow_uses_base_color()` additionally checks applicable atom/chain/class
+  hints in a supplied bundle, retaining payload hint precedence. Known-absent or
+  inapplicable hints and a full replacement mix cannot activate an otherwise
+  disconnected edit or its descriptor. Static/reference-only tendencies remain
+  distinct from this known-context validation.
+- `_execution_permitted()` is the shared final route/hash condition, also used
+  by decision validation. Approximation authorization relaxes visual similarity
+  only; hard requirements, capabilities, policy and valid active edits remain
+  mandatory. `execution_compatible` retains its configuration-compatibility meaning;
+  low-fit routing additionally requires explicit approximation authorization.
+  A real bundle is necessary for any returned hash.
+
+Renderer, resolver, adapters, admission, preset JSON, schema, skill, persistence
+and validation-runner behavior were not changed by these corrections.
+
+**Failing before implementation.** New/expanded regressions ran under
+`c3_boundary_guard` before code changes. Separate logs in
+`/tmp/blender-d1-corrections` record:
+
+- `content-red.log`: 6 failed, 3 passed. Includes both authorization values for
+  the reviewed intersection failure, positive intersections/style unions and
+  conservative handling of ambiguous filters.
+- `camera-red.log`: 4 failed, 4 passed. Covers both hard camera policies, both
+  authorization values, reference-only and real-bundle contexts, and unchanged
+  resolver precedence. All authored/input conflicts failed for the reviewed reason.
+- `material-red-corrected-fixture.log`: 5 failed, 1 passed. Both selection and
+  reference delegation accepted the inactive paint color; legacy inactive color
+  also polluted descriptors. `material-red.log` preserves an earlier sixth failure
+  caused by a positive glow fixture lacking the existing required emission color;
+  that fixture was corrected to valid disabled glow before implementation.
+
+All three original defect groups then passed together: **23 passed, 80 deselected**,
+with zero audited application external actions (`regressions-green.log`). The first
+full correction run passed 245 focused / 698 repository / 646 installed contracts
+in `/tmp/blender-d1-corrections/full`. A fresh independent read-only review confirmed
+the original reproductions were fixed but found the remaining non-paint material
+consumption gap described above. That first correction snapshot is superseded.
+
+Before extending the same helper, `material-followup-red.log` recorded **14 failed,
+6 passed**. These cover attribute/gradient colors through both consumer paths,
+inactive clay/emission branches, descriptor exclusion and valid fallback consumers.
+That intermediate combined regression run passed **43 tests**; its full run passed
+265 focused / 718 repository / 666 installed contracts in `final`. A further
+independent review reproduced the same material defect when enabled color following
+had no applicable hints in a supplied bundle. Before correcting that context check,
+`material-context-red.log` recorded **12 failed, 6 passed**, all failures due to
+inactive edits being accepted. Those logs and superseded wheel evidence are retained.
+Additional tests cover reference delegation, context-sensitive descriptors and
+full replacement mixing. The final combined regressions pass: **67 passed,
+80 deselected**, `regressions-context.log`. There are now **147 selection tests**,
+an increase of **66** over the originally reviewed D1 candidate.
+
+**Final executed validation.** Commands from the D1 worktree:
+
+```sh
+PYTHONPATH=tests PYTHONDONTWRITEBYTECODE=1 /tmp/blender-c3-test-env311/bin/python -m pytest -q -p no:cacheprovider -p c3_boundary_guard tests/test_selection.py -k 'review_ or camera_hard_requirement_does_not_override_resolver_precedence' > /tmp/blender-d1-corrections/regressions-context.log 2>&1
+PYTHONPATH=tests PYTHONDONTWRITEBYTECODE=1 /tmp/blender-c3-test-env311/bin/python -m pytest -q -rs -p no:cacheprovider -p c3_boundary_guard tests/test_selection.py tests/test_spec.py tests/test_developer.py tests/test_developer_policy.py tests/test_reference_presets.py tests/test_style_schema.py > /tmp/blender-d1-corrections/focused-context.log 2>&1
+PYTHONDONTWRITEBYTECODE=1 /tmp/blender-c3-test-env311/bin/python scripts/validate_c3_contracts.py --output /tmp/blender-d1-corrections/context-final > /tmp/blender-d1-corrections/runner-context-final.log 2>&1
+git diff --check
+```
+
+The initial commands used the same guarded pytest invocation, selecting
+`review_content`, `camera_hard_requirement_does_not_override_resolver_precedence`,
+and `review_inactive_paint or review_paint` respectively, with separate red logs.
+The follow-up material regression used `-k review_nonpaint` before its correction.
+The bundle-context regression used `-k review_color_follow` before its correction.
+
+- Focused suite: **289 passed, 2 skipped, 2 warnings**, 4.95s.
+- Complete repository: **742 passed, 2 skipped, 4 warnings**, 199.32s.
+- Installed wheel: **690 passed, 2 skipped, 4 warnings**, 27.43s.
+- Recursive source/wheel/install inventory and bytes: **87 package files equal**.
+- **Four separate determinism probes passed**, with source/reordered/staged/
+  installed import origins checked, distinct working directories and hash seeds.
+- Every application test/probe interpreter loaded its audit guard before imports;
+  every audited application run reported **zero external-action attempts**.
+
+The two inherited skips remain the A/B snapshot and saved-preset child-process
+tests. Warnings remain Starlette/httpx, the anyio BlockingPortal alias, Authlib JOSE
+and Authlib httpx; focused tests emit only the Authlib pair. Nothing was unskipped
+and no guard was weakened.
+
+The established runner built outside the checkout in `context-final/source` using
+`python -m build --wheel --no-isolation`, then installed from `context-final/wheels` into
+`context-final/site` using `pip install --no-index --no-deps --target`. No dependencies
+were fetched. Installed tests imported that package; this is package contract
+evidence, not E-level installed-host/backend/deployment acceptance.
+
+Catalog digest: `bad80220b012977106c678d54178e7558f4038ca7ec480746b7e0b9d640d3835`.
+Wheel SHA-256: `a4b8ff031aab1ac819aa38fe98dbe075b729b145f11ddd28e5da81d2115e359c`.
+Packaged engine build: `6f0289809cb16e9b0f95ef1ea77d72ea488eea3d475d0ac03e00064b649599b6`.
+Logs and structured evidence are in `/tmp/blender-d1-corrections/context-final`.
+Initial state hashes and the correction-only diff are retained alongside it.
+
+Primary tracked-file hashes and `1qys.cif` match the initial state. Local main and
+remote-tracking main/legacy_main refs are unchanged; no remote operation was used
+for this correction. C3 text remains byte-for-byte identical to the base, and
+unrelated tracked files/fixtures retain their initial hashes. No render, allocation,
+backend operation, deployment, commit or push occurred. The fresh independent
+read-only review reports **NO ISSUE**, with no BLOCKER, MAJOR or MINOR findings
+remaining within D1 scope, and considers this bounded milestone safe to commit.
+It independently passed 55 guarded tests plus direct material-consumer probes,
+then verified the final counts, all 87 source/staged/wheel/installed files, copied
+test sources, four determinism records/import origins, wheel hash and zero audit
+attempts. The reviewer edited no files and performed no external application
+actions. This records review completion only: changes remain uncommitted and
+unpushed, and D2 has not begun.
+
+## Milestone D1 — shared consumer preset selection and compact catalog — 2026-09-11
+
+Implemented only D1 in the isolated sibling worktree `blender_bridge-d1`, branch
+`codex/d1-consumer-selection-catalog`, starting exactly at
+`81debf422d3075a5eab62353dec7eb3fac630091`. HEAD remains that commit; all changes
+are **uncommitted and unpushed**. Before editing, local HEAD/status and remote
+`main` were reverified. Local/remote `main` still point to `81debf4`; remote
+`legacy_main` remains `fbddfd98ff4a4278073fda952a11f75537985c66`.
+The primary checkout still has only its original README edit and `1qys.cif`.
+Their initial/final SHA-256 values match:
+
+- README: `1112d2fedc19889235e34bb37e7da63221be45bb0a3d4a86ac0b76d8a2e53981`.
+- CIF: `d66b95ad11410ee8ff8b407abc3ea89c5401825170c9cc519556a382334c81bd`.
+
+The C3 progress text below is preserved byte-for-byte. C3 acceptance documents,
+fixtures/evidence, historical operations, permanent branches, renderer, schema,
+preset JSON, resolver semantics and adapters were not changed.
+
+**Files and contract.** Added `blender_render/selection.py` and
+`tests/test_selection.py` (81 D1 contracts). Extended `presets.py` with additive
+catalog metadata and a deterministic compact snapshot; refactored `authoring.py`
+to shared selection plus PNG provenance. Updated
+`plugins/blender-render/skills/render/SKILL.md`,
+`scripts/validate_c3_contracts.py`, and added `tests/d1_determinism_probe.py`.
+Updated installed-asset paths in `tests/test_style_schema.py` and
+`tests/test_reference_presets.py`; adapted public revision expectations and
+on-disk fixtures in `tests/test_developer.py` and `tests/test_developer_policy.py`
+without removing assertions. Added `docs/preset-selection.md`, updated
+`docs/developer-workflow.md`, and added this progress entry.
+
+`select_preset(SelectionRequest, *, available_capabilities, policy, bundle=None)`
+uses validated dataclasses and exact descriptors/aliases. Explicit IDs/revisions
+never fall back to another preset. Automatic selection is limited to the fourteen
+built-ins, with lexicographic representation/content, material/geometry,
+palette/background/lighting, camera/composition and effective-edit ranking,
+then default-preset/alphabetical tie-breaking. Stricter caller policy can filter
+presets or prevent configuration compatibility. Public revisions are strings;
+user/project storage formats and integer revisions remain unchanged.
+
+High fit requires compatible hard requirements and small supported edits; medium
+fit explicitly reports an approximation. Low fit always recommends a new preset
+and defaults to `developer/new-preset` with a null hash, even with a bundle.
+Explicit low-fit approximation permission cannot bypass hard requirements,
+capabilities or policy. Reference-only decisions have null hashes. Eligible
+bundle-backed decisions expose the exact existing resolver's RenderSpec hash;
+that hash does not identify the bundle or establish admission/live readiness.
+Existing authored-camera capabilities remain within the base's edit envelope.
+Dead/unknown/unused-material edits fail; mode-inactive camera/background edits
+are rejected without changing the resolver. Visual projection observations never
+invent camera assignments. See [the API and matching rules](../preset-selection.md).
+
+Developer references retain their envelope and original observable descriptions,
+but all ranking/fit delegates to the selector with `engine.CAPABILITIES` explicitly.
+PNG reference provenance contains only SHA-256 and dimensions from one validated
+byte snapshot. No paths, pixels, signed URLs or PNG metadata enter decisions;
+generated reasons do not echo arbitrary caller prose.
+
+The compact catalog contains string revisions, descriptions/aliases, content and
+style tendencies, default versus authored camera information, capability/style
+hashes and shared schema references. Every shipped built-in has static
+`eligible_under_current_policy` status; this adds no admission allowlist.
+The consumer skill now describes all fourteen built-ins, preserves preset 1 as
+default and requests catalog information only for unknown names, genuine
+ambiguity, known version changes or broader reference comparisons. Submission is
+authoritative for quota/admission. The skill explicitly states current MCP fields
+and does not claim D2 decision/override/digest transport exists. The skill-creator
+validator passed; no installed Codex/ChatGPT behavioral acceptance is claimed.
+
+**Regression history.** Tests preceded implementation. An initial test-harness
+collection error used pytest's reserved parameter name `request`; corrected before
+the baseline regression run. That run recorded **3 failed / 41 missing-API errors**
+in `red.log`, covering absent selection/catalog and integer public revisions.
+The first implementation run had eight failing assertions: five expected generic
+ValueError instead of inherited typed validation errors; three persisted fixtures
+used public revisions instead of stored integer revisions. Tests were corrected to
+preserve those existing validation/storage contracts. The next run passed
+134 tests with two inherited skips. Expanded focused coverage passed 212 tests.
+
+An intermediate complete runner (`full-v1`) passed **665 repository / 613 installed**
+contracts and four determinism probes, but review then found the authored-camera
+classification gap. Three additional failing camera/projection regressions and
+seven failing mode-consumption regressions were recorded separately in
+`camera-review-red.log` and `mode-review-red.log`. They pass in the final source.
+The first wheel and its earlier counts are superseded by the final evidence below.
+
+**Final executed commands.** From the isolated D1 worktree, the focused run used:
+
+```sh
+PYTHONPATH=tests PYTHONDONTWRITEBYTECODE=1 BLENDER_RENDER_HOME=/tmp/blender-d1-evidence/home PYMOL_BRIDGE_SESSION_ROOT=/tmp/blender-d1-evidence/sessions PYMOL_BRIDGE_TMP_ROOT=/tmp/blender-d1-evidence/runs /tmp/blender-c3-test-env311/bin/python -m pytest -q -p no:cacheprovider -p c3_boundary_guard tests/test_selection.py tests/test_spec.py tests/test_developer.py tests/test_developer_policy.py tests/test_reference_presets.py tests/test_style_schema.py > /tmp/blender-d1-evidence/focused-final.log 2>&1
+PYTHONDONTWRITEBYTECODE=1 /tmp/blender-c3-test-env311/bin/python scripts/validate_c3_contracts.py --output /tmp/blender-d1-evidence/full-v2 > /tmp/blender-d1-evidence/runner-v2.log 2>&1
+git diff --check
+```
+
+Final focused: **223 passed, 2 skipped, 2 warnings, 4.51s**.
+Final repository: **676 passed, 2 skipped, 4 warnings, 216.55s**.
+Final installed wheel: **624 passed, 2 skipped, 4 warnings, 27.02s**.
+All three logs report `C1 audit: real process/network boundary attempts = []`.
+The unchanged skips are `test_snapshot_tracks_python_and_assets` and
+`test_save_restart_reuse_and_revision`, the inherited A/B child-process gates.
+The inherited warnings concern Starlette/httpx, the anyio BlockingPortal alias,
+Authlib JOSE and Authlib httpx; focused tests report only the two Authlib warnings.
+No new unresolved test failures remain.
+
+The runner executes `python -m pytest -q -rs -p no:cacheprovider -p c3_boundary_guard`
+for the full repository, then for its explicit installed contract list (now adding
+D1, specification, presets, schema and developer tests). Each application test
+interpreter loads the audit before application imports. Build/install are explicit
+runner activities. Source staging and test assets are outside the checkout.
+The executed offline build/install commands, from `full-v2/source` then `full-v2`,
+were:
+
+```sh
+/tmp/blender-c3-test-env311/bin/python -m build --wheel --no-isolation --outdir /tmp/blender-d1-evidence/full-v2/wheels
+/tmp/blender-c3-test-env311/bin/python -m pip install --no-index --no-deps --target /tmp/blender-d1-evidence/full-v2/site /tmp/blender-d1-evidence/full-v2/wheels/pymol_plugin_bridge-0.2.0b1-py3-none-any.whl
+```
+
+Both passed with prepared dependencies and no dependency fetching. This is an
+installed-package contract check, not a clean dependency installation or an
+installed-host acceptance run. Import origins are asserted for D1 and existing
+engine modules. Recursive source/wheel/install inventory and bytes match for
+**87 package files**, including the generated-manifest inventory check.
+Four separate explicit runner probes import the audit first and compare catalogs
+and decisions from source, reordered source, relocated staging and installed
+package, with different working directories and `PYTHONHASHSEED` values
+1/91/17/103. All origin assertions pass, all records match and every probe reports
+zero boundary attempts. No guards were weakened or inherited gates unskipped.
+
+Final catalog digest: `a8cafcba2bfaa0c5e7a45e215640af76630c26e080775bf117e0622ab1153250`.
+Final wheel SHA-256: `0a04f9e6cc3a9b5296c97e05d1c4eff49f4088d9cc9a2252df3fd01888c52322`.
+Final packaged engine build: `b65d0c9ccaf8c9f91bafb667249d1a256017645d253b32c77d0c8ccc2b503cc2`.
+Evidence/logs are under `/tmp/blender-d1-evidence/full-v2`; earlier failures remain
+separate under `/tmp/blender-d1-evidence`. Whitespace checking and the render skill
+validator passed. Final repository-state checks reverified primary file hashes
+and permanent refs; only read-only Git remote-ref verification used the network.
+
+No Blender, backend SSH/Slurm, Apptainer, Modal, OAuth, compute allocation,
+credential change, deployment, release, commit or push occurred. No historical
+operation was resumed or modified. C3 live evidence remains evidence for its
+original candidate. D1 does not establish E-level installed-host, backend,
+ChatGPT, Codex, PyMOL or deployment acceptance. Stop here for review: D2 retains
+MCP integration/compact responses; PyMOL integration, installation routing and
+live acceptance remain deferred.
+
 ## C3 exact-commit local and Slurm acceptance passed — 2026-09-10
 
 Rendered candidate: `8741242d585dc4cf0a0ef76ca96c78e892a7cea4`.
