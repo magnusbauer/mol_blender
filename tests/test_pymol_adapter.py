@@ -16,6 +16,7 @@ def test_pymol_run_uses_script_path_in_shared_namespace(monkeypatch, tmp_path):
 
 @pytest.fixture
 def adapter(monkeypatch, tmp_path):
+    monkeypatch.setattr(plugin, '_PACKAGE_ROOT', str(tmp_path))
     calls = []
     class Client:
         def upload(self, payload): calls.append(('upload',payload)); return {'input_id':'input'}
@@ -37,6 +38,54 @@ def test_no_arguments_is_local_preset_one(adapter):
     assert adapter[0][1] == 'local'
     assert adapter[2][1]['preset'] == 'preset_1_interface'
     assert adapter[-1][0] == 'preview'
+
+
+@pytest.fixture
+def lab_defaults(monkeypatch, tmp_path):
+    monkeypatch.setattr(plugin, '_PACKAGE_ROOT', str(tmp_path))
+    (tmp_path/'pymol-defaults.json').write_text(json.dumps({
+        'preset': 'neon_duplex_hero', 'mode': 'lab', 'server_host': 'lab.example', 'server_port': 8768}))
+
+
+def test_bare_lab_command_selects_server_and_neon(adapter, lab_defaults, monkeypatch):
+    import blender_render.client as client
+    fake = client.configured_client('fixture')
+    adapter.clear()
+    def direct(*args, **kwargs):
+        adapter.append(('direct', args, kwargs))
+        return fake
+    monkeypatch.setattr(client, 'Client', direct)
+    plugin.blender_render()
+    assert adapter[0] == ('direct', ('http://lab.example:8768', ''), {'lab_http': True})
+    assert next(item[1] for item in adapter if item[0] == 'submit')['preset'] == 'neon_duplex_hero'
+
+
+@pytest.mark.parametrize('choice', [{'mode':'local'}, {'profile':'local'}, {'mode':'interactive', 'profile':'cluster'}])
+def test_explicit_connection_and_preset_override_lab_defaults(adapter, lab_defaults, choice):
+    plugin.blender_render(preset='preset_1_interface', **choice)
+    assert adapter[0][0] == 'client'
+    assert adapter[0][1] == choice.get('profile', 'local')
+    assert next(item[1] for item in adapter if item[0] == 'submit')['preset'] == 'preset_1_interface'
+
+
+def test_host_override_keeps_lab_mode_and_neon(adapter, lab_defaults, monkeypatch):
+    import blender_render.client as client
+    fake = client.configured_client('fixture')
+    adapter.clear()
+    def direct(*args, **kwargs):
+        adapter.append(('direct', args, kwargs))
+        return fake
+    monkeypatch.setattr(client, 'Client', direct)
+    plugin.blender_render(server_host='127.0.0.1', server_port=18768)
+    assert adapter[0] == ('direct', ('http://127.0.0.1:18768', ''), {'lab_http': True})
+    assert next(item[1] for item in adapter if item[0] == 'submit')['preset'] == 'neon_duplex_hero'
+
+
+def test_installation_defaults_reject_unused_fields(monkeypatch, tmp_path):
+    monkeypatch.setattr(plugin, '_PACKAGE_ROOT', str(tmp_path))
+    (tmp_path/'pymol-defaults.json').write_text('{"mystery":true}')
+    with pytest.raises(ValueError, match='Unsupported'):
+        plugin.installation_defaults()
 
 
 def test_pymol_injected_command_context_is_used(adapter, monkeypatch):

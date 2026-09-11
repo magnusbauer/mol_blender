@@ -1,5 +1,43 @@
 # Blender Render implementation progress
 
+## Lab PyMOL defaults: neon preset and direct server — 2026-09-11
+
+The user requested `neon_duplex_hero` as the default after finding that bare
+`blender_render` still selected a local service. The lab client now reads an
+installation-specific `pymol-defaults.json` beside its package. The deployed
+shared plugin and downloadable client bundle select the existing lab endpoint
+and neon preset with no render arguments. The checkout's local deployment
+configuration supplies the same defaults. These files contain no credentials and
+are ignored by Git; committed examples contain only placeholder endpoints.
+
+Explicit preset, host and port arguments override their defaults. Selecting a
+different mode or a named profile uses that connection's settings. An installation
+without this configuration still selects local rendering and preset 1. The
+renderer implementation, immutable engine assets, controller and queue are
+unchanged. Updated lab and DokuWiki instructions explain the bare command,
+explicit overrides and outside SSH forwarding.
+
+Executed verification:
+
+- **36 passed** with `python -m pytest` for `test_pymol_adapter.py` and
+  `test_lab_network.py`, covering default selection and explicit overrides.
+- **36 installed-wheel checks passed** outside the checkout. All **87** packaged
+  source files matched checkout, wheel and installation byte-for-byte. Wheel
+  SHA256: `73ffb39b6a152ba790372d9f5d3618b8b1e30d630c3d2adf8dd8dc7aa5e2ab2f`.
+- An actual Linux PyMOL singleton loaded public 2TRX, ran the deployed plugin,
+  and executed literal `blender_render` with no arguments. Previously imported
+  checkout client/export modules remained loaded, reproducing the user's mixed
+  installation context. Job `84001ab6fce97a71932dd38d5458df75` completed through
+  the lab proxy and returned a PNG to PyMOL. The manifest confirmed
+  `neon_duplex_hero`, full quality and **128 samples**; visual inspection confirmed
+  cartoon helices/sheets and ligand sticks. The initial embedded multi-instance
+  harness did not register the command on its separate command object and
+  submitted no job; using PyMOL's actual singleton resolved that harness issue.
+
+This client-only deployment did not restart or replace the controller. No new
+Mac GUI, Slurm, hosted service or outside-network release gate is claimed.
+The deployment-specific wiki replacement and render evidence remain untracked.
+
 ## Authorized direct lab-network access — 2026-09-11
 
 The user explicitly requested token-free, tunnel-free access inside the lab and

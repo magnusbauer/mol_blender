@@ -24,15 +24,16 @@ Try a public structure:
 
 <code python>
 fetch 1qys
-blender_render mode=lab, server_host=RENDER_HOST, server_port=8768, rough=1
+blender_render
 </code>
 
-For your own structure, load and orient it normally, then run the same ''blender_render'' command. It exports the enabled scene, colors and camera. Preset 1 is the default.
+For your own structure, load and orient it normally, then run ''blender_render''. The lab installation automatically selects the lab server and ''neon_duplex_hero''. It exports the enabled scene, colors and camera.
 
-For full quality and a named output:
+For a fast preview, or to choose another preset:
 
 <code python>
-blender_render mode=lab, server_host=RENDER_HOST, server_port=8768, output_name=figure.png
+blender_render rough=1
+blender_render preset=preset_1_interface, output_name=figure.png
 </code>
 
 The PNG is saved in PyMOL's current directory and displayed in PyMOL. Use ''output_dir'' to choose another directory, or ''save_blend=1'' to also download a Blender scene. Rough mode changes performance settings only.
@@ -48,7 +49,7 @@ ssh -N -o ExitOnForwardFailure=yes -L 127.0.0.1:8768:127.0.0.1:8768 USER@RENDER_
 Keep that terminal open. In PyMOL, use the local end of the tunnel:
 
 <code python>
-blender_render mode=lab, server_host=127.0.0.1, server_port=8768, rough=1
+blender_render server_host=127.0.0.1, rough=1
 </code>
 
 Use your normal SSH jump host if needed. Inside the approved lab network, this tunnel is unnecessary.
@@ -59,5 +60,5 @@ Use your normal SSH jump host if needed. Inside the approved lab network, this t
   * Jobs are associated with the source computer. People using the same Digs host share that identity; this is not isolation between individual Digs accounts.
   * Requests enter one shared FIFO queue. The Blender worker stops after 15 idle minutes and starts again when needed.
   * A connection error is not a reason to resubmit a job that already has an ID. Check its status first.
-  * ''mode=local'' renders on the computer running PyMOL. Use ''mode=lab'' with the server hostname for this lab service.
+  * ''mode=local'' explicitly renders on the computer running PyMOL. Bare ''blender_render'' uses the lab installation's configured server and neon preset.
   * Other Python/API clients can use the same scene-upload and job API. Direct ''.pse'' uploads and service administration are not enabled on this endpoint.

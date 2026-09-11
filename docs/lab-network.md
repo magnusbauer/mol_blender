@@ -16,23 +16,26 @@ identity or encrypted transport is required.
 ## PyMOL
 
 Restart PyMOL after updating the plugin. Load the current
-`blender_render/pymol_bridge_plugin.py`, then use the hostname
-provided by the lab operator:
+`blender_render/pymol_bridge_plugin.py` from the lab installation:
 
 ```python
 fetch 1qys
-blender_render mode=lab, server_host=RENDER_HOST, server_port=8768, rough=1
+blender_render
+blender_render rough=1
 ```
 
-No client token or tunnel is needed inside the allowed lab subnets. `mode=lab`
-explicitly selects the lab HTTP transport. It disables environment HTTP proxies,
+The lab installation supplies the server and `neon_duplex_hero` preset defaults.
+`preset=preset_1_interface` chooses the original pastel preset, and an explicit
+`mode=local` or `profile=...` overrides the installation's connection defaults.
+No client token or tunnel is needed inside the allowed lab subnets. Lab HTTP
+transport disables environment HTTP proxies,
 rejects redirects and public destination IPs, and connects to the same private
 IPv4 address that it validated. Normal local, SSH and HTTPS modes retain their
 existing behavior. A missing or unresolvable hostname fails instead of falling
 back to another backend.
 
 The same exported scene goes to the normal FIFO queue and Blender renderer.
-Preset 1 remains the default. The PNG is downloaded to `render.png` in PyMOL's
+The PNG is downloaded to `render.png` in PyMOL's
 current directory and displayed. `output_dir` and `output_name` control its
 location; `save_blend=1` requests a Blender scene. Remove `rough=1` for full
 quality. Remote rendering works from macOS without a local Blender installation.
@@ -59,6 +62,19 @@ not exposed. Export a scene locally through PyMOL; untrusted PSE conversion need
 the separate sandboxed gateway.
 
 ## Operator setup
+
+Place `pymol-defaults.json` beside the `blender_render` package in the client
+installation, and include it at the root of a client bundle:
+
+```json
+{"preset":"neon_duplex_hero","mode":"lab","server_host":"RENDER_HOST","server_port":8768}
+```
+
+The plugin reads this deployment configuration from the script being run,
+including when PyMOL has already imported a package from another installation.
+Only these four fields are accepted. Explicit render arguments take precedence.
+An installation without this file retains local rendering with preset 1. The file
+contains no credentials and lives outside the renderer's immutable package assets.
 
 Run `scripts/lab_network_proxy.py` on the same host as the private renderer. Use
 an operator-owned mode-0600 credential with `serve --controller-token-file`,

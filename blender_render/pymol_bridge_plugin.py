@@ -13,6 +13,24 @@ from blender_render.export import (build_render_payload, collect_view_payload,
     _normalize_cli_string, _parse_bool, _parse_int, _parse_float)
 
 
+def installation_defaults():
+    """Deployment settings live beside the package, outside the engine assets."""
+    path = Path(_PACKAGE_ROOT) / 'pymol-defaults.json'
+    if not path.exists():
+        return {}
+    values = json.loads(path.read_text())
+    allowed = {'preset', 'mode', 'server_host', 'server_port'}
+    if not isinstance(values, dict) or set(values) - allowed:
+        raise ValueError('Unsupported PyMOL installation defaults')
+    for key in ('preset', 'mode', 'server_host'):
+        if key in values and (not isinstance(values[key], str) or not values[key].strip()
+                              or any(char in values[key] for char in ('\n', '\0'))):
+            raise ValueError('Invalid PyMOL default: ' + key)
+    if 'server_port' in values and (type(values['server_port']) is not int or not 1 <= values['server_port'] <= 65535):
+        raise ValueError('Invalid PyMOL default: server_port')
+    return values
+
+
 def try_load_preview(cmd_obj, output_png):
     try:
         cmd_obj.load_png(str(output_png), movie=1, quiet=1)
@@ -22,9 +40,9 @@ def try_load_preview(cmd_obj, output_png):
         return False
 
 
-def bridge_render(selection="(all)", preset="preset_1_interface", style_json="", mode="local",
+def bridge_render(selection="(all)", preset="", style_json="", mode="",
                   output_dir=".", output_name="render.png", rough=0, color_follow="",
-                  save_blend="", raw_view="", state=-1, server_host="", server_port=8765,
+                  save_blend="", raw_view="", state=-1, server_host="", server_port="",
                   server_timeout=1800, profile="", use_apptainer=0, apptainer_image="",
                   blender_exe="", attach=1, attach_only=0, keep_temp=0,
                   width="", height="", samples="", transparent_background="",
@@ -37,6 +55,17 @@ def bridge_render(selection="(all)", preset="preset_1_interface", style_json="",
     from blender_render.config import load_config
     text = _normalize_cli_string
     mode, profile = text(mode), text(profile)
+    defaults = installation_defaults()
+    preset = text(preset) or defaults.get('preset', 'preset_1_interface')
+    # Explicit profiles/mode changes select their own connection. Overriding just
+    # the host or port retains the lab transport, e.g. for an outside SSH tunnel.
+    if not profile and (not mode or mode == defaults.get('mode', 'local')):
+        mode = mode or defaults.get('mode', 'local')
+        server_host = text(server_host) or defaults.get('server_host', '')
+        server_port = text(server_port) or defaults.get('server_port', 8765)
+    else:
+        mode = mode or 'local'
+        server_port = text(server_port) or 8765
     allowed = {"interactive_session", "interactive_launcher", "auto_close_interactive_session", "slurm_partition", "slurm_account", "slurm_gres", "slurm_time", "poll", "poll_interval"}
     unknown = set(legacy) - allowed
     if unknown:
