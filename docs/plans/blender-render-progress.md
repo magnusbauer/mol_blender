@@ -1,5 +1,54 @@
 # Blender Render implementation progress
 
+## Authorized direct lab-network access — 2026-09-11
+
+The user explicitly requested token-free, tunnel-free access inside the lab and
+SSH forwarding for outside access. This bounded follow-up implements that network
+trust policy without changing rendering behavior or the controller's token checks.
+It is not unrestricted publication or a release-gate completion.
+
+The standalone lab proxy requires explicit private-network CIDRs, derives ownership
+from the actual TCP source address, and supplies a separate operator-held controller
+credential to the existing loopback API. Forwarded identity headers are discarded.
+Users on the same workstation/NAT/Digs host share a job identity; this limitation is
+explicit in the documentation. Administrator, internal execution and unsandboxed
+file-conversion routes are unavailable through this adapter. The normal service
+retains its one FIFO queue, database, idempotency records and lifetime accounting.
+
+PyMOL `mode=lab` and `lab_http` endpoint profiles use the existing shared client and
+renderer. The opt-in transport sends no inherited token, disables environment HTTP
+proxies, rejects redirects/public IPs, and connects to the exact validated private
+IPv4 address. No camera, preset, material, export or Blender implementation changed.
+
+Executed verification:
+
+- **59 passed, 4 inherited deprecation warnings** for `test_lab_network.py`,
+  `test_pymol_adapter.py`, and `test_jobs_api.py`, using `python -m pytest`.
+  A sandbox-local TestClient event-loop stall was resolved by running this same
+  suite outside the sandbox; no renderer/API workaround was added.
+- An offline-built wheel was installed outside the checkout with `--no-index
+  --no-deps --target`. **30 installed transport/PyMOL checks passed**. All **87**
+  packaged source files matched checkout, wheel and installation byte-for-byte.
+  Wheel SHA256: `c83a0297ef661f1ecee908a61b1b394a198899c2fde404d00267fb9bc669624c`.
+- A real public 1SPS scene was exported in PyMOL, submitted directly from Digs
+  without a token/tunnel, rendered and downloaded. Job
+  `e0cefbb42f979fd8d7a2fb76046393fd` produced a 320 x 240 rough PNG; its manifest
+  verified CIF, DSS, cartoon secondary structure, native ligand sticks and the
+  pinned runtime. A second actual PyMOL adapter render through SSH completed as
+  `7cc518e93d3513420a3e4ae49b1fa843` with another valid 320 x 240 PNG.
+- Live admin/internal/PSE-route attempts returned 403. An unapproved TCP source
+  returned 403 despite a spoofed forwarding header. Graceful shutdown/restart
+  preserved the existing queue: health did not restart it; one new upload did,
+  and its unused structure was deleted without submitting another render.
+
+The operator explicitly deployed only the observed lab subnets plus loopback.
+Executable service code and credentials live in an owner-only configuration
+directory; the shared client archive contains no credentials. The prior controller
+was stopped before replacement, and its existing database was retained. No Slurm,
+Modal, OAuth, Mac GUI or real outside-network release gate is claimed here.
+The ready-to-adapt DokuWiki replacement is `docs/wiki/good_viz_blender.txt`; a
+deployment-specific filled copy and public render evidence remain untracked.
+
 ## C3 exact-commit local and Slurm acceptance passed — 2026-09-10
 
 Rendered candidate: `8741242d585dc4cf0a0ef76ca96c78e892a7cea4`.

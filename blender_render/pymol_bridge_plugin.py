@@ -45,7 +45,8 @@ def bridge_render(selection="(all)", preset="preset_1_interface", style_json="",
         raise ValueError("Configure allocation resources in a named cluster profile using blender-render profile add.")
     if text(server_host):
         from blender_render.remote_client import _normalize_base_url
-        client = Client(_normalize_base_url(text(server_host), int(server_port)), os.environ.get("BLENDER_RENDER_TOKEN", ""))
+        url = _normalize_base_url(text(server_host), int(server_port))
+        client = Client(url, '', lab_http=True) if mode == 'lab' else Client(url, os.environ.get("BLENDER_RENDER_TOKEN", ""))
     else:
         selected = profile or (load_config().get("default_hpc_profile", "ipd") if mode in {"interactive", "slurm", "hpc"} else mode)
         image = text(apptainer_image) if _parse_bool(use_apptainer) or mode == "apptainer" else ""
