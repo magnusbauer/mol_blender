@@ -22,6 +22,7 @@ from typing import Callable
 
 from . import artifacts as artifact_lifecycle
 from .compatibility import sanitize, message
+from . import consumer_records, consumer_errors
 
 
 class JobError(ValueError):
@@ -114,6 +115,8 @@ class JobStore:
                                        ('conversion_reserved', 'INTEGER NOT NULL DEFAULT 0')):
                 if column not in columns:
                     self.db.execute('ALTER TABLE jobs ADD COLUMN ' + column + ' ' + definition)
+            if 'consumer_metadata' not in columns:
+                self.db.execute('ALTER TABLE jobs ADD COLUMN consumer_metadata TEXT')
             self.db.execute('CREATE INDEX IF NOT EXISTS runnable_jobs ON jobs(state,blocked_condition,submitted)')
             self.db.execute('COMMIT')
         except BaseException:
@@ -226,7 +229,8 @@ class JobStore:
         inputs = db.execute('SELECT COALESCE(SUM(size),0) FROM inputs').fetchone()[0]
         artifacts = db.execute("SELECT COALESCE(SUM(json_extract(result,'$.bytes')),0) FROM jobs WHERE result IS NOT NULL").fetchone()[0]
         snapshots = db.execute("SELECT COALESCE(SUM(length(CAST(execution AS BLOB))),0)+COALESCE(SUM(length(CAST(options AS BLOB))),0) FROM jobs").fetchone()[0]
-        return inputs + artifacts + snapshots
+        metadata = db.execute('SELECT COALESCE(SUM(length(CAST(consumer_metadata AS BLOB))),0) FROM jobs').fetchone()[0]
+        return inputs + artifacts + snapshots + metadata
 
     def _check_storage(self, db, extra=0):
         if self.policy.public and self.storage_bytes(db) + extra > self.policy.max_storage_bytes:
@@ -462,11 +466,14 @@ class JobStore:
                     return self._reused_job(row)
             return None
 
-    def submit(self, owner: str, input_id: str, options: dict, idempotency_key: str, *, client_hash: str | None = None, rerender: bool = False, operation_key: str | None = None) -> dict:
+    def submit(self, owner: str, input_id: str, options: dict, idempotency_key: str, *, client_hash: str | None = None, rerender: bool = False, operation_key: str | None = None, consumer_metadata=None) -> dict:
         if not isinstance(idempotency_key, str) or not 1 <= len(idempotency_key) <= 128:
             raise JobError("Provide an idempotency key of 1 to 128 characters.")
         encoded = json.dumps(options, sort_keys=True, allow_nan=False, separators=(",", ":"))
-        request_hash = hashlib.sha256((input_id + encoded).encode()).hexdigest()
+        if consumer_metadata is not None:
+            consumer_metadata = consumer_records.validate_metadata(consumer_metadata)
+        intent = consumer_metadata['request_fingerprint'] if consumer_metadata else ''
+        request_hash = hashlib.sha256((input_id + encoded + intent).encode()).hexdigest()
         now = self.clock()
         identifier = secrets.token_hex(16)
         with self.transaction() as db:
@@ -481,7 +488,7 @@ class JobStore:
                 return self._reused_job(db.execute('SELECT * FROM jobs WHERE id=?', (alias['job_id'],)).fetchone())
             self.input(owner, input_id)
             source = db.execute('SELECT * FROM inputs WHERE id=? AND owner=?', (input_id, owner)).fetchone()
-            fingerprint = hashlib.sha256((source['content_sha256'] + encoded).encode()).hexdigest()
+            fingerprint = hashlib.sha256((source['content_sha256'] + encoded + intent).encode()).hexdigest()
             if not rerender:
                 existing = db.execute("""SELECT * FROM jobs WHERE owner=? AND render_fingerprint=?
                     ORDER BY submitted,id LIMIT 1""", (owner, fingerprint)).fetchone()
@@ -503,6 +510,9 @@ class JobStore:
                     raise JobError("Your daily free render quota is used up.", "daily_quota", 429)
             db.execute("INSERT INTO jobs(id,owner,input_id,idempotency_key,request_hash,options,state,submitted,reserved) VALUES (?,?,?,?,?,?,'queued',?,?)", (identifier, owner, input_id, idempotency_key, request_hash, encoded, now, reservation))
             db.execute("UPDATE jobs SET resume_phase='admitted' WHERE id=?", (identifier,))
+            if consumer_metadata is not None:
+                db.execute('UPDATE jobs SET consumer_metadata=? WHERE id=?',
+                           (consumer_records.dumps(consumer_metadata), identifier))
             db.execute("UPDATE jobs SET session_id=?,submitted_by=?,client_request_hash=?,render_fingerprint=?,source_key=? WHERE id=?", (self.session_id,owner,client_hash,fingerprint,source['source_key'],identifier))
             self._remember_submission(db, owner, input_id, idempotency_key, client_hash, request_hash, identifier)
             db.execute('UPDATE jobs SET operation_key=?,stage_history=?,input_sha256=? WHERE id=?',
@@ -543,18 +553,46 @@ class JobStore:
             db.execute('UPDATE jobs SET execution=? WHERE id=?', (json.dumps(snapshot, allow_nan=False), identifier))
             self._check_storage(db)
 
-    def bind_spec(self, identifier, request, payload=None):
+    def bind_consumer_decision(self, identifier, metadata):
+        """Only the deferred preselection -> exact validation transition is mutable."""
+        from .consumer_records import validate_metadata, validate_transition
+        metadata = validate_metadata(metadata)
+        with self.transaction() as db:
+            row = db.execute('SELECT * FROM jobs WHERE id=?', (identifier,)).fetchone()
+            previous = consumer_records.loads(row['consumer_metadata']) if row else None
+            if (not previous or previous['selection_phase'] != 'preselection'
+                    or row['state'] != 'running' or row['execution']
+                    or metadata['selection_phase'] != 'refused'):
+                raise JobError('Consumer decision is immutable', 'snapshot_conflict', 409)
+            validate_transition(previous, metadata)
+            db.execute('UPDATE jobs SET consumer_metadata=? WHERE id=?',
+                       (consumer_records.dumps(metadata), identifier))
+            self._check_storage(db)
+
+    def bind_spec(self, identifier, request, payload=None, *, consumer_metadata=None):
         """Bind the one resolved snapshot after deferred file conversion."""
         with self.transaction() as db:
-            row = db.execute('SELECT options,execution,state FROM jobs WHERE id=?', (identifier,)).fetchone()
+            row = db.execute('SELECT options,execution,state,consumer_metadata FROM jobs WHERE id=?', (identifier,)).fetchone()
             if not row or row['state'] != 'running' or 'prepare_file' not in json.loads(row['options']):
                 raise JobError('Only a running deferred conversion can bind execution')
             if row and row['execution']:
                 raise JobError('Execution snapshot is immutable', 'snapshot_conflict', 409)
             if payload is None:
                 raise JobError('Binding requires both immutable snapshots')
+            if row['consumer_metadata'] is not None and consumer_metadata is None:
+                raise JobError('Binding requires the exact-context consumer decision')
             from .execution import freeze_execution
             snapshot = freeze_execution(payload, request)
+            if consumer_metadata is not None:
+                from .consumer_records import validate_metadata, validate_transition
+                consumer_metadata = validate_metadata(consumer_metadata)
+                old = db.execute('SELECT consumer_metadata FROM jobs WHERE id=?', (identifier,)).fetchone()[0]
+                if (not old or consumer_records.loads(old)['selection_phase'] != 'preselection'
+                        or consumer_metadata['selection_phase'] != 'bound'):
+                    raise JobError('Consumer decision is immutable', 'snapshot_conflict', 409)
+                validate_transition(consumer_records.loads(old), consumer_metadata)
+                db.execute('UPDATE jobs SET consumer_metadata=? WHERE id=?',
+                           (consumer_records.dumps(consumer_metadata), identifier))
             db.execute('UPDATE jobs SET execution=? WHERE id=?', (json.dumps(snapshot, allow_nan=False), identifier))
             db.execute("UPDATE jobs SET options=? WHERE id=? AND state='running'",
                        (json.dumps(request, sort_keys=True, allow_nan=False), identifier))
@@ -565,7 +603,19 @@ class JobStore:
             return {'jobs': [self._public_job(row) for row in self.db.execute(
                 'SELECT * FROM jobs WHERE owner=? ORDER BY submitted DESC,rowid DESC LIMIT 50', (owner,))]}
 
+    @staticmethod
+    def _consumer_metadata(row):
+        value = consumer_records.loads(row['consumer_metadata'])
+        if value is None and 'consumer_request' in json.loads(row['options']):
+            raise consumer_records.MetadataError('Deferred consumer metadata is missing')
+        return value
+
     def _public_job(self, row) -> dict:
+        malformed = False
+        try:
+            consumer = self._consumer_metadata(row) or {}
+        except consumer_records.MetadataError:
+            consumer, malformed = {}, True
         position = 0
         if row["state"] == "queued":
             position = self.db.execute("SELECT COUNT(*) FROM jobs WHERE state='queued' AND (submitted<? OR (submitted=? AND rowid <= (SELECT rowid FROM jobs WHERE id=?)))", (row["submitted"], row["submitted"], row["id"])).fetchone()[0]
@@ -595,7 +645,16 @@ class JobStore:
             error = message(diagnostic)
         actions = {'restart_required':'restart_service', 'compatibility_blocked':'restore_exact_engine',
                    'execution_unknown':'inspect_execution', 'recovery_required':'recover_operation'}
-        return {"job_id": row["id"], "operation_id": row["id"], "status": status, "queue_position": position,
+        if malformed:
+            condition, available = 'metadata_invalid', False
+            actions['metadata_invalid'] = 'operator_inspection'
+        error_category = 'metadata_invalid' if malformed else consumer.get('error_category')
+        if status == 'expired':
+            error_category = 'artifact_expired' if row['result_expires'] is not None and row['result_expires'] <= self.clock() else 'artifact_unavailable'
+        return {**{key: consumer.get(key) for key in ('preset_decision', 'style_source', 'selection_phase', 'backend_render_started', 'selection_error', 'style_identity', 'preselection_decision')},
+                'error_category': error_category,
+                'error_message': consumer_errors.MESSAGES.get(error_category),
+                "job_id": row["id"], "operation_id": row["id"], "status": status, "queue_position": position,
                 'condition': condition, 'blocked_condition': row['blocked_condition'] if pending else None,
                 'compatibility_diagnostic': diagnostic,
                 'resume_phase': row['resume_phase'] if pending else None,
@@ -628,6 +687,10 @@ class JobStore:
             row = self.db.execute("SELECT * FROM jobs WHERE id=? AND owner=?", (identifier, owner)).fetchone()
             if not row:
                 raise JobError("Job not found.", "not_found", 404)
+            try:
+                self._consumer_metadata(row)
+            except consumer_records.MetadataError as exc:
+                raise JobError('Stored consumer metadata requires operator inspection.', 'metadata_invalid', 409) from exc
             # Persist observed loss before exposing metadata. This only reconciles
             # artifact storage; it cannot admit work or restore a tombstone.
             if row['expected_artifacts']:
@@ -648,7 +711,7 @@ class JobStore:
                     'inventory_complete': known,
                     'artifacts': [a for a in items if a['availability'] == 'available']}
             metadata = self._public_job(row)
-            data.update({key: metadata[key] for key in ('bundle_sha256', 'render_spec_sha256', 'engine_build', 'timings', 'timing_integrity_conflict')})
+            data.update({key: metadata[key] for key in ('bundle_sha256', 'render_spec_sha256', 'engine_build', 'timings', 'timing_integrity_conflict', 'preset_decision', 'style_source', 'selection_phase', 'style_identity', 'preselection_decision')})
             data['bytes'] = sum(a['size'] for a in data['artifacts'])
             if not inventory and not complete:
                 raise JobError('Render artifacts are unavailable; recovery never starts a replacement render.', 'artifact_unavailable', 410)
@@ -686,6 +749,11 @@ class JobStore:
             row = db.execute("SELECT * FROM jobs WHERE (state='queued' OR (state='transfer_pending' AND recovery_ready=1)) AND blocked_condition IS NULL ORDER BY submitted,rowid LIMIT 1").fetchone()
             if not row:
                 return None
+            try:
+                self._consumer_metadata(row)
+            except consumer_records.MetadataError:
+                db.execute("UPDATE jobs SET blocked_condition='recovery_required' WHERE id=?", (row['id'],))
+                return None
             # A durable admission reservation already exists. Expiration or an
             # operator drain also prevents starting previously queued work.
             try:
@@ -703,6 +771,11 @@ class JobStore:
     def checkpoint(self, identifier, phase, *, dispatched=False):
         with self.transaction() as db:
             db.execute('UPDATE jobs SET resume_phase=?,dispatch_fenced=? WHERE id=?', (phase, int(dispatched), identifier))
+            if phase == 'dispatch' and dispatched:
+                metadata = consumer_records.loads(db.execute('SELECT consumer_metadata FROM jobs WHERE id=?', (identifier,)).fetchone()[0])
+                if metadata is not None:
+                    metadata['backend_render_started'] = True
+                    db.execute('UPDATE jobs SET consumer_metadata=? WHERE id=?', (consumer_records.dumps(metadata), identifier))
 
     def block(self, identifier, condition, phase, *, diagnostic=None):
         if condition not in {'restart_required', 'compatibility_blocked', 'execution_unknown', 'recovery_required'}:
@@ -798,7 +871,7 @@ class JobStore:
             self._release_finished_inputs(db)
         return self.get(owner, identifier)
 
-    def finish(self, identifier: str, *, result: dict | None = None, error: str | None = None, seconds: float = 0, compute_started: bool = True):
+    def finish(self, identifier: str, *, result: dict | None = None, error: str | None = None, seconds: float = 0, compute_started: bool = True, error_category=None):
         with self.transaction() as db:
             row = db.execute("SELECT * FROM jobs WHERE id=?", (identifier,)).fetchone()
             if not row or row["state"] != "running":
@@ -806,6 +879,11 @@ class JobStore:
             state = "cancelled" if row["cancel_requested"] else ("failed" if error else "done")
             if state == 'cancelled':
                 error = 'Render cancelled by a user or operator request.'
+            metadata = consumer_records.loads(row['consumer_metadata'])
+            if metadata is not None and state != 'done':
+                metadata['error_category'] = ('cancelled' if state == 'cancelled' else
+                    metadata['error_category'] or consumer_errors.category(error_category, 'render_failed'))
+                db.execute('UPDATE jobs SET consumer_metadata=? WHERE id=?', (consumer_records.dumps(metadata), identifier))
             seconds = max(0, min(float(seconds), self.policy.max_job_seconds))
             charged = min(row["reserved"], math.ceil((seconds + self.policy.startup_seconds) * self.policy.usd_per_second * 1_000_000)) if self.policy.public and compute_started else 0
             if row['remote_phase']:

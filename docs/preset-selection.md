@@ -240,7 +240,9 @@ for more catalog information only for unknown names, genuine ambiguity, known
 catalog changes or broader reference comparison. Current MCP `list_presets` returns
 identifiers only. Current MCP options have no decision, revision, override or
 catalog-digest fields. Quota/admission remains authoritative at submission; quota
-queries are for user questions or explaining a rejection.
+queries are for user questions or explaining a rejection. This paragraph records
+the D1 boundary; D2's structured MCP request, compact catalog and recovery tools
+are specified in [MCP consumer transport](mcp-consumer.md).
 
 The offline runner `scripts/validate_c3_contracts.py` now includes D1, specification,
 preset, schema and developer contracts in its outside-checkout wheel installation.

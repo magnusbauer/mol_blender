@@ -258,13 +258,13 @@ def remote_bootstrap(package_root, *, check=True, administrative=False):
 # Reviewed package-module closures; provider and Blender modules are deliberately
 # absent from controller actions. Dependencies may be imported transitively here.
 ACTION_MODULES = {
-    'admission': ('core', 'presets', 'spec', 'execution', 'export', 'jobs', 'artifacts', 'telemetry',
+    'admission': ('core', 'presets', 'spec', 'selection', 'consumer', 'consumer_records', 'consumer_errors', 'consumer_transport', 'execution', 'export', 'jobs', 'artifacts', 'telemetry',
                   'gateway', 'delivery', 'operation_progress'),
     'conversion': ('export', 'execution', 'spec', 'telemetry', 'modal_boundaries'),
     'startup': ('core', 'config', 'render_worker_manager', 'telemetry'),
     'dispatch': ('render_server', 'rendering', 'execution', 'spec', 'telemetry', 'operation_progress'),
     'submission': ('client', 'hpc', 'runtime', 'execution', 'telemetry'),
-    'transfer': ('client', 'hpc', 'runtime', 'delivery', 'artifacts', 'telemetry'),
+    'transfer': ('client', 'hpc', 'runtime', 'delivery', 'consumer_records', 'consumer_errors', 'artifacts', 'telemetry'),
     'render': ('core', 'bridge_runner', 'chain_palette', 'ligand_selection', 'cutout_planes',
                'geometry', 'paint', 'reference_effects', 'operation_progress', 'telemetry', 'worker_ccd'),
 }

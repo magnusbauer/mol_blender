@@ -5,6 +5,7 @@ activities; every pytest process loads its audit guard before application import
 No dependency fetching, render, SSH, scheduler or provider action is authorized.
 """
 import argparse
+from contextlib import ExitStack
 import hashlib
 import json
 import os
@@ -25,12 +26,16 @@ CONTRACTS = ['test_execution_envelope.py', 'test_gateway_recovery.py', 'test_hpc
              'test_c3_blocked_clients.py', 'test_c3_stored_retrieval.py', 'test_c3_ccd_capture.py',
              'test_developer_ccd_entry.py', 'test_worker_ipc.py', 'test_hpc_outer_ipc.py', 'test_acceptance_ipc.py', 'test_acceptance_diagnostics.py', 'test_compatibility_diagnostics.py',
              'test_selection.py', 'test_spec.py', 'test_reference_presets.py', 'test_style_schema.py',
-             'test_developer.py', 'test_developer_policy.py']
+             'test_developer.py', 'test_developer_policy.py',
+             'test_mcp_contracts.py', 'test_d2_consumer.py', 'test_d2_review.py', 'test_d2_corrections.py',
+             'test_d2_final_review.py']
 
 
-def run(command, cwd, env, log):
-    with log.open('w') as stream:
-        subprocess.run(command, cwd=cwd, env=env, stdout=stream, stderr=subprocess.STDOUT, check=True)
+def run(command, cwd, env, log, *, separate_stderr=False):
+    with ExitStack() as stack:
+        stream = stack.enter_context(log.open('w'))
+        errors = stack.enter_context(log.with_suffix('.stderr.log').open('w')) if separate_stderr else subprocess.STDOUT
+        subprocess.run(command, cwd=cwd, env=env, stdout=stream, stderr=errors, check=True)
 
 
 def main():
@@ -86,30 +91,42 @@ def main():
                 raise ValueError('Duplicate package path in built wheel')
             target.write_bytes(archive.read(member))
         inventory = inventory_api['package_inventory']
-        assert inventory(ROOT/'blender_render') == inventory(extracted/'blender_render') == inventory(site/'blender_render') == manifest['files']
+        assert inventory(ROOT/'blender_render') == inventory(staging/'blender_render') == inventory(extracted/'blender_render') == inventory(site/'blender_render') == manifest['files']
         for name, digest in manifest['files'].items():
             data = archive.read('blender_render/'+name)
             assert hashlib.sha256(data).hexdigest() == digest
-            assert data == (ROOT/'blender_render'/name).read_bytes() == (site/'blender_render'/name).read_bytes()
+            assert data == (ROOT/'blender_render'/name).read_bytes() == (staging/'blender_render'/name).read_bytes() == (extracted/'blender_render'/name).read_bytes() == (site/'blender_render'/name).read_bytes()
     # Separate interpreter activities belong to this runner, never to the
     # guarded application. Every probe loads c3_boundary_guard before imports.
-    probes = []
+    probes, consumer_probes = [], []
     for label, package_parent, cwd, reverse, seed in (
             ('source', ROOT, ROOT, False, '1'),
             ('source-reordered', ROOT, out, True, '91'),
             ('staged-reordered', staging, out, True, '17'),
+            ('extracted', extracted, out, False, '43'),
             ('installed', site, out, False, '103')):
         probe_env = {**env, 'PYTHONPATH':os.pathsep.join([str(package_parent), str(out/'tests')]),
-                     'PYTHONHASHSEED':seed, 'D1_EXPECT_PACKAGE':str(package_parent/'blender_render')}
+                     'PYTHONHASHSEED':seed, 'D1_EXPECT_PACKAGE':str(package_parent/'blender_render'),
+                     'D2_EXPECT_PACKAGE':str(package_parent/'blender_render')}
         command = [sys.executable, str(out/'tests/d1_determinism_probe.py')]
         if reverse:
             command.append('--reverse')
         log = out/(label+'-determinism.json')
-        run(command, cwd, probe_env, log)
+        run(command, cwd, probe_env, log, separate_stderr=True)
         probes.append(json.loads(log.read_text()))
+        consumer_command = [sys.executable, str(out/'tests/d2_determinism_probe.py')]
+        if reverse:
+            consumer_command.append('--reverse')
+        consumer_log = out/(label+'-d2-determinism.json')
+        run(consumer_command, cwd, probe_env, consumer_log, separate_stderr=True)
+        consumer_probes.append(json.loads(consumer_log.read_text()))
     assert all(probe == probes[0] for probe in probes), 'D1 catalog/decision determinism failed'
+    assert all(probe == consumer_probes[0] for probe in consumer_probes), 'D2 transport determinism failed'
     evidence = {'catalog_digest':probes[0]['catalog']['digest'],
                 'determinism_interpreters':len(probes), 'determinism_boundary_attempts':[],
+                'd2_determinism_interpreters':len(consumer_probes), 'd2_determinism_boundary_attempts':[],
+                'd2_surface_digests':consumer_probes[0]['surface_digests'],
+                'consumer_metadata_limit_bytes':8192,
                 'wheel_sha256':hashlib.sha256(wheel.read_bytes()).hexdigest(),
                 'engine_build':manifest['engine_build'], 'verified_package_files':len(manifest['files']),
                 'repository_log':'repository.log', 'installed_log':'installed.log',

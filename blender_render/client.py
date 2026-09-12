@@ -61,7 +61,7 @@ class Client:
     def upload(self, payload, name="structure.cif"):
         return self.request("POST", "/v1/structures", {"payload": payload, "name": name})
 
-    def upload_file(self, path):
+    def upload_file(self, path, *, consumer=False):
         path = Path(path).expanduser().resolve()
         suffix = path.suffix.lower().lstrip(".")
         if suffix not in {"pse", "cif", "mmcif", "pdb"}:
@@ -69,8 +69,11 @@ class Client:
         with path.open("rb") as stream:
             data = stream.read(50 * 1024**2 + 1)
         if len(data) > 50 * 1024**2:
+            if consumer:
+                raise ClientError('File exceeds the 50 MiB upload limit.', 413, 'too_large')
             raise ClientError("File exceeds the 50 MiB upload limit.")
-        return self.request("POST", "/v1/files/" + suffix + '?' + urlencode({'name': path.name}), data, raw=True)
+        query = 'consumer=1' if consumer else urlencode({'name': path.name})
+        return self.request("POST", "/v1/files/" + suffix + '?' + query, data, raw=True)
 
     def structures(self):
         return self.request("GET", "/v1/structures")
@@ -82,6 +85,43 @@ class Client:
         if rerender and not (idempotency_key or operation_key):
             raise ClientError('An explicit repeat requires a stable operation or idempotency key')
         return self.request("POST", "/v1/jobs", {"input_id": input_id, "options": options or {}, "idempotency_key": idempotency_key or uuid.uuid4().hex, "rerender": rerender, 'operation_key': operation_key})
+
+    def recover_render(self, request, *, consumer_policy=None):
+        """Owner-scoped lookup, independent of file bytes and attachment URLs."""
+        data = {'request': request, 'consumer_policy': consumer_policy} if consumer_policy is not None else request
+        return self.request('POST', '/v1/consumer/recover', data)['job']
+
+    def submit_consumer(self, input_id, request, *, rerender=False):
+        return self.request('POST', '/v1/consumer/submit',
+                            {'input_id': input_id, 'request': request, 'rerender': rerender})
+
+    def render_consumer_file(self, path, request, *, consumer_policy=None):
+        policy_options = {'consumer_policy': consumer_policy} if consumer_policy is not None else {}
+        replay = self.recover_render(request, **policy_options)
+        if replay is not None:
+            return replay
+        envelope = {'request': request, **policy_options} if policy_options else request
+        preflight = self.request('POST', '/v1/consumer/preflight', envelope)
+        if preflight.get('job') is not None:
+            return preflight['job']
+        if 'refusal' in preflight:
+            return preflight['refusal']
+        path = Path(path).expanduser().resolve()
+        if path.suffix.lower() not in {'.pse', '.cif', '.mmcif', '.pdb'}:
+            raise ClientError('Choose a molecular PSE, CIF or PDB input', 422, 'format_unknown')
+        try:
+            with path.open('rb') as stream:
+                data = stream.read(50 * 1024**2 + 1)
+        except OSError as exc:
+            raise ClientError('The selected molecular file is unavailable.', 422, 'attachment_unavailable') from exc
+        if len(data) > 50 * 1024**2:
+            raise ClientError('Input exceeds 50 MiB', 413, 'too_large')
+        settings = json.dumps({'consumer_request': request, **policy_options}, allow_nan=False, separators=(',', ':')).encode()
+        if len(settings) > 65532:
+            raise ClientError('Consumer request exceeds the bounded envelope', 422, 'selection_invalid')
+        # A private filename is unnecessary for conversion and must not enter access logs.
+        return self.request('POST', '/v1/render-files/' + path.suffix.lower()[1:],
+                            len(settings).to_bytes(4, 'big') + settings + data, raw=True)
 
     def render_file(self, path, options=None, idempotency_key=None, *, rerender=False, operation_key=None, selection='(all)'):
         path = Path(path).expanduser().resolve()
@@ -165,8 +205,17 @@ class ConfiguredClient(Client):
     def __init__(self, profile, intention, options):
         self.profile, self.intention, self.options = profile, intention, options
 
+    def consumer_policy(self):
+        from . import consumer
+        trusted = self.options.get('consumer_trusted', consumer.trusted_profile(self.profile))
+        return {'format_version': 1, 'public': not trusted}
+
     def request(self, method, path, body=None, **kwargs):
-        start = method == 'POST' and (path == '/v1/structures' or path in {'/v1/jobs', '/internal/v1/resolved'}
+        if method == 'POST' and path in {'/v1/consumer/recover', '/v1/consumer/preflight'}:
+            body = {'request': body, 'consumer_policy': self.consumer_policy()}
+        elif method == 'POST' and path == '/v1/consumer/submit':
+            body = {**body, 'consumer_policy': self.consumer_policy()}
+        start = method == 'POST' and (path == '/v1/structures' or path in {'/v1/jobs', '/internal/v1/resolved', '/v1/consumer/submit'}
             or path.startswith(('/v1/files/', '/v1/render-files/')))
         intention = self.intention or (ConnectionIntention.START_OR_ALLOCATE if start else ConnectionIntention.INSPECT_CACHED)
         if not start and intention == ConnectionIntention.START_OR_ALLOCATE:
@@ -183,6 +232,32 @@ class ConfiguredClient(Client):
                      else ConnectionIntention.INSPECT_CACHED)
         return _connect_client(self.profile, intention=intention, **self.options).download(job_id, output)
 
+    def render_consumer_file(self, path, request):
+        from . import consumer
+        # An absent cached controller is distinct from a failed request to an
+        # existing controller. Never turn a lost/ambiguous response into submit.
+        try:
+            replay = self.recover_render(request)
+        except RuntimeError as exc:
+            if not isinstance(exc.__cause__, FileNotFoundError):
+                raise
+            replay = None
+        if replay is not None:
+            return replay
+        trusted = self.options.get('consumer_trusted', consumer.trusted_profile(self.profile))
+        normalized = consumer.normalize_request(request, trusted=trusted)
+        decision = consumer.preselect(normalized, consumer.server_policy(not trusted))
+        if not consumer.executable(decision):
+            return consumer.non_admission(decision, self.profile)
+        intention = self.intention or ConnectionIntention.START_OR_ALLOCATE
+        if intention != ConnectionIntention.START_OR_ALLOCATE:
+            raise ClientError('Connection intention prohibits new execution submission')
+        # Local/HPC profiles use the existing outer admission controller. The
+        # selected backend is still reached only after its durable queue claim.
+        options = {**self.options, 'admission': True}
+        connection = _connect_client(self.profile, intention=intention, **options)
+        return connection.render_consumer_file(path, request, consumer_policy=self.consumer_policy())
+
 
 def configured_client(profile='local', *, read_only=None, intention=None, attach_only=None, **kwargs):
     return ConfiguredClient(profile, connection_intention(intention, read_only=read_only, attach_only=attach_only), kwargs)
@@ -194,6 +269,7 @@ def start_service(profile='local', **kwargs):
 
 
 def _connect_client(profile="local", *, read_only=None, admission=False, intention=None, attach_only=None, **kwargs):
+    kwargs.pop('consumer_trusted', None)  # Adapter schema configuration, never worker configuration.
     intention = connection_intention(intention, read_only=read_only, attach_only=attach_only) or ConnectionIntention.START_OR_ALLOCATE
     read_only = intention != ConnectionIntention.START_OR_ALLOCATE
     controller_owner = kwargs.pop('controller_owner', None)

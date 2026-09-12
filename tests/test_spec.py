@@ -301,33 +301,37 @@ def test_dead_camera_control_is_rejected(value, bundle):
 
 @pytest.mark.parametrize("transport", ["stdio", "http"])
 @pytest.mark.parametrize("scene", [False, True])
-def test_mcp_options_reach_shared_resolver(transport, scene, bundle, monkeypatch):
+def test_mcp_options_reach_shared_resolver(transport, scene, bundle, monkeypatch, tmp_path):
     from fastmcp import Client as MCPClient
     from fastmcp.server.auth.providers.jwt import StaticTokenVerifier
     from blender_render.api import Downloads
     import blender_render.client
     import blender_render.mcp_server as mcp
-    requests = []
-    def submit(options):
-        requests.append(prepare_options(options, bundle, public=transport == "http", timeout=600))
-        return {"job_id": "existing-contract-job", "status": "queued"}
+    from blender_render.jobs import JobStore
+    from blender_render.service import RenderService
+    from test_jobs_api import Compute, payload as molecular_payload
+    store = JobStore(tmp_path / 'store')
+    service = RenderService(store, Compute())
+    source = service.import_payload('test-owner', molecular_payload.__wrapped__())['input_id']
     if transport == "stdio":
-        connection = SimpleNamespace(submit=lambda input_id, options, key, **kw: submit(options))
+        connection = SimpleNamespace(submit_consumer=lambda input_id, request, **kw:
+            service.submit_consumer('test-owner', input_id, request, trusted=True, **kw))
         monkeypatch.setattr(blender_render.client, "configured_client", lambda *a, **k: connection)
-        server = mcp.create_stdio()
+        server = mcp.create_stdio(compatibility=True)
     else:
         monkeypatch.setattr(mcp, "owner", lambda: "test-owner")
-        service = SimpleNamespace(submit=lambda owner, input_id, options, key, **kw: submit(options))
-        server = mcp.create_http(service, auth=StaticTokenVerifier(tokens={}), downloads=Downloads("x" * 48, ""), converter=None)
+        server = mcp.create_http(service, auth=StaticTokenVerifier(tokens={}), downloads=Downloads("x" * 48, ""), converter=None, compatibility=True)
     options = {"preset": "green_paint", "width": 720, "height": 480, "samples": 16}
     if scene:
         options["save_blend"] = True
     async def run():
         async with MCPClient(server) as client:
-            await client.call_tool("submit_render", {"input_id": "input", "idempotency_key": "contract", "options": options})
+            await client.call_tool("submit_render", {"input_id": source, "idempotency_key": "contract", "options": options})
     asyncio.run(run())
-    assert len(requests) == 1
-    request = requests[0]
+    rows = store.db.execute('SELECT execution FROM jobs').fetchall()
+    assert len(rows) == 1 and not service.backend.calls
+    request = json.loads(rows[0][0])['request']
+    store.close()
     assert request["preset"] == "dried_paint_green"
     assert request["save_blend"] is scene
     assert request["style_doc"]["output"]["save_blend"] is scene

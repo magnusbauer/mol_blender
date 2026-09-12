@@ -24,7 +24,7 @@ codex mcp add blender-render-local -- /absolute/path/to/blender-render mcp --pro
 codex mcp add blender-render-ipd -- /absolute/path/to/blender-render mcp --profile ipd
 ```
 
-The local adapter accepts a user-selected absolute `.pse`, `.cif`, or `.pdb` path and uploads the validated export to that profile. A private HPC profile never routes through the shared Modal endpoint. To use only the local adapter, disable the shared plugin's MCP connection in Codex and retain its rendering skill, or use the local configuration example below when packaging a lab plugin:
+The local adapter accepts a user-selected absolute `.pse`, `.cif`, or `.pdb` path. D2 recovers a matching request key before reading it, then admits raw files to the existing durable operation before conversion. A private HPC profile never routes through the shared Modal endpoint. To use only the local adapter, disable the shared plugin's MCP connection in Codex and retain its rendering skill, or use the local configuration example below when packaging a lab plugin:
 
 ```json
 {
@@ -49,9 +49,9 @@ codex mcp add blender-render-files -- /absolute/path/to/blender-render mcp --pro
 The shared HTTPS tool uses ChatGPT's attachment object. The stdio adapter uses a
 local path. Choose the adapter that matches where the input file is available.
 
-Use `render_structure` to upload and submit in one tool call. Keep its job ID, use `render_status` (a read-only wait of up to 25 seconds) until done, then immediately call `render_result`. Do not repeat upload or submission to check progress. Identical retries reuse the job without another GPU reservation, including when an agent changes its retry key. Explicit additional identical renders use the compatibility import/submit tools with `rerender=true` and a new stable key.
+Use `render_structure` with its structured versioned `request`, including a stable opaque `request_key`. Keep that request and the returned job ID, use `render_status` (a read-only wait of up to 25 seconds) until done, then immediately call `render_result`. Do not repeat upload or submission to check progress. Recover a lost response with `recover_render` and the same request, even after the attachment expires. Explicit additional identical renders use opt-in compatibility import/submit tools with `rerender=true` and a new stable key. The complete contract is in [MCP consumer transport](mcp-consumer.md).
 
-The ten tools are `render_structure`, `import_structure`, `list_structures`, `delete_structure`, `list_presets`, `submit_render`, `render_status`, `render_result`, `cancel_render`, and `available_quota`. The separate import/submit tools remain for existing clients. `list_structures` shows pending imports, not a saved library. `delete_structure` removes an unused import early. Inputs are automatically deleted after rendering. The result includes a native PNG preview and PNG, optional `.blend`, and manifest downloads. Refresh the ChatGPT connection's tools after an upgrade and use a new conversation so cached tool descriptions do not repeat the old workflow.
+Default D2 discovery contains `render_structure`, `render_status`, `render_result`, `cancel_render`, `list_presets`, `list_recent_renders`, `recover_render`, `recover_transfer` and `available_quota`. Factories expose the four import/submit/structure compatibility tools only with `compatibility=True`; REST compatibility APIs remain. Shared HTTP advertises built-in selection and edits; trusted local/private schemas may also advertise complete style JSON. The compact catalog contains descriptors and a digest, with static eligibility distinct from live availability. Common renders need no catalog or quota preflight. Inputs are automatically deleted after rendering. Results include a native PNG preview and PNG, optional `.blend`, and manifest downloads. These are repository/package contracts, not a claim that the published endpoint or any installed host has been upgraded or accepted. Refresh tools after an actual upgrade.
 
 ChatGPT receives a lightweight native PNG preview, an inline preview URL, and direct PNG,
 Blender scene, and manifest links. The assistant should include **View PNG preview** and download links in its final
@@ -59,8 +59,9 @@ reply. Some ChatGPT surfaces hide remote Markdown images even when the URL is
 correct, so the explicit preview link is required. Inline display is not yet
 reliable across ChatGPT surfaces. Delivery does not depend on a custom MCP Apps card: a ChatGPT
 conversation mounted that card but stayed on "Loading the completed render"
-after the render had finished. The legacy resource remains available for
-old clients, but current tool discovery does not attach it to results. Request
+after the render had finished. The legacy resource and private resource hook require
+the separate `legacy_widget=True` option; default and compatibility-tool discovery
+exclude that widget. Request
 the result promptly: each downloaded file is deleted, and undelivered files
 expire fifteen minutes after completion.
 
@@ -68,5 +69,12 @@ The native preview is at most 1024 pixels on its longest edge and 384 KiB;
 the downloadable PNG keeps the requested resolution and transparency. Results
 use ordinary download links instead of MCP resource attachments, avoiding an
 automatic import of all output files before ChatGPT can finish its reply.
+
+Preview generation failure preserves successful links or verified local paths
+and reports `presentation_status="fallback_links"` with `presentation_failed`.
+It cannot change render success or repeat downloads, acknowledgement or rendering.
+Compatibility submission obeys the same server-owned selection policy. D2 accepts
+only bounded canonical transport descriptors; see the contract for vocabularies,
+durable metadata validation and compact actionable status fields.
 
 For ChatGPT with private compute, use your lab's authenticated HTTPS gateway as described in [HPC setup](hpc.md). ChatGPT cannot call a laptop's loopback stdio service directly.

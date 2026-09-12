@@ -1,5 +1,442 @@
 # Blender Render implementation progress
 
+## D2 final independent-review corrections — 2026-09-12
+
+The follow-up review found four remaining MAJOR defects: a restricted STDIO
+adapter lost its policy at a private service's compatibility API; PNG acquisition
+failure was confused with preview failure; converter conditions were collapsed;
+and FastMCP logged unsafe handler exceptions before outer sanitization. This
+entry supersedes the preceding D2 candidate's readiness claim, while retaining
+that review and its evidence below. No earlier D1/C3 text is rewritten.
+
+All existing uncommitted D2 work is preserved on `codex/d2-mcp-thin-adapter`,
+at base `fc7466947ab5aec9c5b7961dfa86d31df98491f1`. Changes in this correction
+are limited to six consumer/API/client/service modules, one regression module,
+the installed-contract list and D2 documentation. No commit, push or D3 work is
+authorized. All bounded validation below passed; the candidate is ready for
+another independent read-only review. It remains uncommitted and unpushed.
+
+**Failing-before evidence.** The first four guarded runs, before application
+changes, reported 5 policy, 4 delivery, 15 converter and 4 logging failures.
+One logging case initially used incompatible test authentication; after fixing
+that fixture, the retained reviewed package reproduced the actual path leak.
+Further regressions cover STDIO conversion, wrapped cancellation, compatibility
+file uploads and DEBUG protocol dumps. Four compatibility-upload cases and seven
+DEBUG cases failed separately before their respective corrections.
+
+The final 82-case definitions were rerun against the retained reviewed wheel
+installation after all 92 application package files were compared with the
+initial correction snapshot. Every byte matched. Each interpreter loaded the
+audit guard first and asserted the reviewed import origin. This did not reset
+or modify the source worktree. Final-definition results against that old package:
+
+| Finding | Failed before | Passed controls |
+| --- | ---: | ---: |
+| Restricted STDIO normal/compatibility policy | 5 | 7 |
+| Artifact acquisition versus presentation | 4 | 6 |
+| Actual MCP converter categories and absence | 40 | 6 |
+| Actual handler/protocol logging at INFO and DEBUG | 11 | 3 |
+
+These 60 failures are distinct final test cases, not a sum of repeated runs.
+Initial/intermediate logs remain separate. The import-origin reruns have an
+additional pytest assertion-rewrite warning because they import the guard
+explicitly; ordinary guarded pytest runs retain the four inherited warnings.
+Evidence is retained outside the checkout in
+`/tmp/blender-d2-final-corrections-jefdszew`, including `before.json`,
+`82-definitions-before.json`, individual red logs and the final ordered runs.
+
+**Corrections.** `ConfiguredClient` propagates a versioned `consumer_policy`
+envelope through recovery, preflight, raw-file admission and compatibility
+submission. Its restrictive public bit combines with service policy and survives
+both selection phases. The same authoritative consumer gate handles normal and
+compatibility submissions; a private service cannot widen a restricted adapter.
+Legacy non-consumer policy and admission economics remain unchanged.
+
+Hosted results now read inventory once, acquire the PNG, encode the preview and
+construct the response in separate stages. Missing/consumed PNGs yield incomplete
+artifact delivery, remove stale PNG links and preserve other available artifacts.
+STDIO retains verified remaining paths and reports incomplete delivery if its PNG
+vanishes. Only decoder/encoder failure after acquisition reports
+`fallback_links` / `presentation_failed`; successful inline images report
+`inline_preview`. Neither path repeats retrieval/acknowledgement or rendering.
+
+Typed converter codes survive import and deferred execution, including compute,
+capability, cancellation and existing runtime/integrity conditions. A missing
+converter reports `compute_unavailable`. MCP raw uploads use generic transport
+names so private filenames do not enter access-log URLs. Compatibility raw uploads
+opt into this consumer behavior; ordinary legacy uploads retain their old route.
+
+Registered sync/async tools sanitize exceptions before returning control to the
+FastMCP tool manager, with fixed typed errors and no unsafe cause/context. Outer
+middleware still protects framework validation before handler entry. Standard
+logger filters suppress pre-middleware DEBUG argument dumps in the two protocol
+loggers; INFO and higher diagnostics remain available. D2 execution failures log
+only a safe category and job ID. Captured MCP/client outputs, application/framework
+logs and formatted tracebacks are checked for synthetic submitted sentinels.
+
+**Final executed validation.** All four targeted groups, then D2, D1 and existing
+contracts ran in the requested order. The full guarded repository run was followed
+by the outside-checkout offline build/install, installed contracts, recursive
+package comparison and ten separate guarded determinism interpreters.
+
+| Check | Result |
+| --- | --- |
+| Restricted STDIO policy | 12 passed, 70 deselected, 4 warnings in 8.76s |
+| Artifact acquisition/presentation | 10 passed, 72 deselected, 4 warnings in 9.87s |
+| Actual MCP converter categories | 46 passed, 36 deselected, 4 warnings in 23.17s |
+| Actual INFO/DEBUG log sanitization | 14 passed, 68 deselected, 4 warnings in 5.35s |
+| Complete D2 focused suite | 269 passed, 4 warnings in 99.33s (0:01:39) |
+| D1 selection/catalog/schema/developer contracts | 289 passed, 2 skipped, 4 warnings in 7.37s |
+| Existing MCP/API/lifecycle/migration/recovery/delivery/privacy | 139 passed, 4 warnings in 140.91s (0:02:20) |
+| Complete guarded repository | 1007 passed, 2 skipped, 4 warnings in 310.50s (0:05:10) |
+| Installed-wheel contracts | 959 passed, 2 skipped, 4 warnings in 48.74s |
+| Recursive source/staging/wheel/extraction/install equality | 92 package files equal |
+| Separate D1 and actual-discovery D2 probes | 5 + 5 passed |
+| Audited application external actions | 0 |
+| git diff --check | passed |
+
+This correction adds 82 cases; old candidate counts are preserved only as review
+history. The two skips remain the prohibited A/B developer subprocess acceptance
+tests. Four inherited warnings concern Authlib jose/httpx, Starlette TestClient
+httpx and AnyIO's BlockingPortal alias. Build warnings concern deliberately
+disabled bytecode. No package dependencies were fetched; the prepared dependency
+environment was reused, not claimed as a clean dependency installation.
+
+Every test/probe interpreter loaded `c3_boundary_guard` before application imports.
+The runner's explicit build/install subprocesses operated outside the checkout,
+using `build --wheel --no-isolation` and `pip install --no-index --no-deps --target`.
+Copied contracts ran outside the checkout against the installed package, with
+origin assertions and recursive byte equality. Probe combinations cover source,
+source with another working directory/order/seed, staging, extraction and install.
+The full runner finished successfully without a partial-evidence repair.
+
+Package logs and canonical probe records are retained in
+`/tmp/blender-d2-final-package`; `evidence.json` contains their identities. Ordered
+runs are under the correction evidence directory's `final-v2/`. Initial and
+intermediate red/green runs remain separate. The new regression module is
+`tests/test_d2_final_review.py`, included in installed contracts by
+`scripts/validate_c3_contracts.py`.
+
+Wheel SHA-256: `b52aa5fe014d473fec976277fb4a32c51591e430afbf5de660c7bf88c4990376`.
+Engine build: `23be22d4007b480187d899efd4e3df8eaa698d800452e20ae3d1c0e12e71424f`.
+Unchanged D1 catalog digest:
+`bad80220b012977106c678d54178e7558f4038ca7ec480746b7e0b9d640d3835`.
+Durable metadata remains version 1 with the existing 8192-byte bound.
+
+All five actual discovered MCP surface digests remain unchanged:
+
+| Surface | SHA-256 |
+| --- | --- |
+| Hosted default | `cf4a49fa7c60a5c86b7fff671601a61ab339162ef7ea108003b1cfe271369aec` |
+| Trusted STDIO default | `120831a2f106523650adedc3128c6fa08a6c773f55bcde4f05f96573ba9b27c6` |
+| Hosted compatibility | `4846bb3dc9f666e9557443d713f75cf11a99bf14c4aa2cee7bb07c982838c509` |
+| Trusted STDIO compatibility | `d03da01c3daefedc7c4ee2310085ff68ebf67d90f52e54e605468fc31a8f24ae` |
+| Explicit legacy widget | `1d3f7410bf6f6542c4c68a5da4613e51a0bb0beab96b4b29efa077b69e95fe68` |
+
+Final preservation checks compare the primary checkout with its current initial
+snapshot only: 235 files, modified README and untracked public fixture retained.
+The D1 worktree's 233 files, both HEADs/statuses and recorded permanent refs are
+unchanged. The earlier D1/C3 progress suffix is byte-identical. D2 remains at the
+required base with an empty index and the complete uncommitted implementation.
+The six application files changed in this round are `api.py`, `client.py`,
+`consumer.py`, `consumer_errors.py`, `mcp_server.py` and `service.py`; the new
+regression module, contract-runner list and two D2 documentation files are the
+only other correction changes.
+
+Recovery still precedes file access, uses owner-scoped first-input request binding
+and never falls back to a replacement operation. D1 ranking, renderer/PyMOL code,
+authentication, quota/budget/retention policy and live configuration are unchanged.
+No real Blender, PyMOL, SSH, Slurm, Apptainer, Modal, OAuth, external HTTP,
+deployment or installed host acceptance ran. Stop for independent review;
+D3 nonblocking PyMOL adaptation, D4/D5 and all live acceptance remain pending.
+
+## D2 independent-review corrections — 2026-09-11
+
+The independent review found eight issues in the uncommitted D2 candidate:
+compatibility submission bypassed consumer policy; MCP errors could expose
+submitted values and lose codes; preview failures discarded successful delivery;
+compact status lost lifecycle fields and frozen provenance; visual observations
+were insufficiently constrained; durable metadata lacked bounded read validation
+and accounting; the legacy widget was registered by default; and determinism
+evidence covered request models rather than discovered MCP surfaces.
+
+This correction preserves that implementation on `codex/d2-mcp-thin-adapter`,
+directly based on `fc7466947ab5aec9c5b7961dfa86d31df98491f1`. It remains
+uncommitted and unpushed. No D3 work is included. The prior D2 validation below is
+historical evidence, not acceptance of the corrected candidate. Earlier C3 text
+is unchanged.
+
+The primary checkout's current snapshot is HEAD
+`82d7a20055a2418898331021497f5550cd7825aa`, with modified `README.md` and untracked
+`1qys.cif`. Its 235 current tracked/untracked file hashes and current refs were
+recorded before correction. This supersedes the obsolete historical-preservation
+assertion; the correction will compare against this current snapshot only.
+
+**Failing-before evidence.** Regressions were added before application changes.
+The initial eight guarded runs failed in these counts:
+
+| Finding | Initial failures |
+| --- | ---: |
+| Compatibility policy | 18 |
+| Actual MCP error sanitization | 22 |
+| Hosted/STDIO preview fallback | 2 |
+| Compact lifecycle/provenance | 6 |
+| Safe transport descriptors | 8 |
+| Durable metadata validation/accounting | 6 |
+| Legacy widget isolation | 4 |
+| Actual discovery determinism | 1 |
+
+The final regression definitions were also rerun against the retained reviewed
+package after correcting test assumptions. All 90 package files were first
+compared to the initial snapshot; every byte matched. Each interpreter loaded
+the boundary guard before application imports and asserted the reviewed package
+origin. These runs reproduced the same 67 failures. Original logs had four
+inherited warnings; the explicit import-origin harness adds one pytest assertion
+rewrite warning for the already loaded guard. The final normal pytest runner
+does not need that harness. Logs for original and repeated failures are retained
+separately outside the checkout.
+
+Additional edge regressions failed before their corrections: **2 failures** for
+missing metadata on a known deferred D2 job and converter unavailability, then
+**1 failure** for compatibility handoff with a changed retry key after input
+cleanup. These supplement the original eight findings. Resolver adapter tests
+were also updated to use the actual service/store boundary instead of legacy
+`submit()` stubs; their resolution assertions remain intact.
+
+**Corrections.** Both MCP submission surfaces share `consumer_preflight()` and
+`consumer_exact()`; compatibility uses the owner-scoped validated import before
+job/reservation creation. Supported FastMCP middleware sanitizes both framework
+validation and handler exceptions into fixed JSON error records. Preview errors
+preserve ordinary links or verified files and report presentation fallback.
+Compact status preserves queue/expiry, safe lifecycle errors and immutable style
+identity/preselection through refusal and cleanup. Versioned D2 descriptors have
+strict vocabularies, collection/aggregate/depth/encoded-size bounds; D1 is unchanged.
+`consumer_records` validates metadata on write/read/presentation/execution without
+catalog imports, limits it to 8192 bytes, and includes it in storage accounting.
+Malformed metadata requires inspection and cannot dispatch work. Legacy widget
+registration and its private resource hook require a separate explicit option.
+Discovery probes record actual tools/resources, including schemas, annotations,
+metadata and order, with intentional expected digests for all five surfaces.
+
+**Final executed validation.** All eight correction groups passed in order,
+followed by the complete D2, D1 and existing lifecycle suites. Package/application
+validation used the prepared interpreter, with no dependency fetching or live
+services. Every test/probe interpreter loaded the audit guard before application
+imports. The candidate is ready for another independent read-only review; this
+does not authorize committing, pushing or starting D3.
+
+| Check | Corrected result |
+| --- | --- |
+| Compatibility policy and handoff | 22 passed |
+| Actual MCP errors and unavailable converter | 53 passed |
+| Hosted/STDIO preview fallback | 2 passed |
+| Compact lifecycle/provenance/accounting | 16 passed |
+| Canonical transport descriptors | 14 passed |
+| Durable metadata/migration/immutability | 17 passed |
+| Default/legacy widget discovery | 6 passed |
+| Actual discovery digests and mutation sensitivity | 2 passed |
+| Complete D2 focused suite | 187 passed, 4 warnings; 59.86s |
+| D1 selection/catalog/schema/developer contracts | 289 passed, 2 skipped, 4 warnings; 7.15s |
+| Existing MCP/API/operation/migration/recovery/delivery contracts | 127 passed, 4 warnings; 138.68s |
+| Complete guarded repository suite | 925 passed, 2 skipped, 4 warnings; 265.28s |
+| Installed-wheel contracts, including all correction regressions | 877 passed, 2 skipped, 4 warnings; 41.87s |
+| Recursive source/staging/wheel/extraction/install equality | 92 package files equal |
+| Separate guarded D1 and actual-discovery D2 probes | 5 + 5 passed |
+| Audited application external actions | 0 in every final test/probe |
+| `git diff --check` | passed |
+
+The correction adds 128 cases. The two skips are the inherited prohibited
+developer subprocess acceptance tests. Four inherited warnings concern Authlib
+jose/httpx, Starlette TestClient httpx and AnyIO's BlockingPortal alias. Build
+warnings report deliberately disabled bytecode. Preview tests explicitly isolate
+their receipt directory; that fixture-only refinement also passed its two-case
+rerun and the final repository/installed suites.
+
+The wheel was built outside the checkout with `python -m build --wheel
+--no-isolation` and installed with `pip install --no-index --no-deps --target`.
+Copied contracts ran from the outside directory against the installed package.
+Origin assertions, complete recursive inventory and byte comparisons verify that
+source/staging/wheel/extracted/installed imports and files match. Guarded probes
+use five separate working-directory/hash-seed combinations for each milestone.
+
+The first evidence-runner invocation completed repository tests, wheel build,
+installation, installed tests and equality checks, then its JSON reader stopped
+because FastMCP import warnings were merged into probe stdout. `run()` now records
+probe stderr separately. All ten probes were rerun through that corrected helper,
+and package bytes were independently reverified before completing `evidence.json`.
+The validated application package did not change. Warnings remain available in
+the separate stderr logs; none were hidden to stabilize a digest.
+
+Wheel SHA-256:
+`c3c66f8901f8e178ee9a6439c078a82dcda663ac9cfde98e42bd7bad723adf0c`.
+Engine build:
+`5e37d81257fc196f5e8f4341a22abcb65aed4d36fbfaf7dbcaca35681ac87cc0`.
+Unchanged D1 catalog digest:
+`bad80220b012977106c678d54178e7558f4038ca7ec480746b7e0b9d640d3835`.
+
+Logs, initial failures, snapshots and intermediate runs are retained separately
+outside the checkout. The full package evidence is in the correction validation
+directory. The original D1/C3 progress entries remain byte-for-byte unchanged.
+Final comparison confirms the current primary snapshot (235 files), D1 worktree
+(233 files), their statuses/HEADs and all recorded permanent refs are unchanged.
+D2 HEAD remains the required base, with an empty index and all work uncommitted.
+D1 ranking, renderer/PyMOL behavior, authentication, admission economics and
+retention policy are unchanged; metadata bytes now correctly count toward the
+existing storage limit. Recovery keeps its first-input binding and owner scope.
+D3 nonblocking PyMOL adaptation, later D4/D5 work, and all live Mac/HPC/Modal and
+installed ChatGPT/Codex acceptance remain unexecuted.
+
+Actual discovered-surface SHA-256 values (tools, order, descriptions, annotations,
+schemas, metadata, resources and mode identity):
+
+| Surface | Digest |
+| --- | --- |
+| Hosted default | `cf4a49fa7c60a5c86b7fff671601a61ab339162ef7ea108003b1cfe271369aec` |
+| Trusted STDIO default | `120831a2f106523650adedc3128c6fa08a6c773f55bcde4f05f96573ba9b27c6` |
+| Hosted compatibility tools | `4846bb3dc9f666e9557443d713f75cf11a99bf14c4aa2cee7bb07c982838c509` |
+| Trusted STDIO compatibility tools | `d03da01c3daefedc7c4ee2310085ff68ebf67d90f52e54e605468fc31a8f24ae` |
+| Explicit legacy widget | `1d3f7410bf6f6542c4c68a5da4613e51a0bb0beab96b4b29efa077b69e95fe68` |
+
+## D2 MCP consumer transport — 2026-09-11
+
+Implemented only the MCP-facing part of Milestone D on
+`codex/d2-mcp-thin-adapter`, starting exactly at reviewed/pushed D1 commit
+`fc7466947ab5aec9c5b7961dfa86d31df98491f1`, whose direct parent is
+`81debf422d3075a5eab62353dec7eb3fac630091`. The remote D1 branch was verified
+before creating the separate clean worktree. D2 remains uncommitted and unpushed.
+All earlier entries below remain unchanged historical evidence.
+
+**Contract and implementation.** [MCP consumer transport](../mcp-consumer.md)
+documents the request, trust surfaces, resolution phases and recovery rules.
+
+- `mcp_requests.py` advertises separate strict hosted/trusted schemas. Requests
+  carry a version, opaque stable key, D1 requirements/observations/edits and
+  supported output controls. Only the trusted schema advertises complete custom
+  style JSON; it has an explicit custom source and no invented built-in decision.
+  PNG is the default; a scene requires an explicit request. Server capabilities
+  and selection policy are never caller-supplied authorization.
+- `consumer.py` normalizes intent, calls the unchanged D1 selector and builds
+  compact safe responses. It does not rank presets, interpret images/prose or
+  generate visual assignments. Phase A supplies no bundle and exposes no hash;
+  a refusal precedes download, conversion, job creation and reservation. Automatic
+  choices freeze their canonical preset and string revision before admission.
+- `service.py` carries that frozen request through the existing deferred file
+  operation. Phase B uses the actual validated bundle, rechecks the same preset,
+  installed catalog, capabilities and policy, and checks applicable color-follow
+  hints. The existing final `prepare_options()` runs once after D1 validation.
+  Only the immutable service snapshot supplies the top-level RenderSpec hash.
+  Refusals before dispatch retain a typed phase/error and a false backend marker;
+  approximation permission never bypasses D1 hard requirements.
+- `jobs.py` adds nullable validated `consumer_metadata` in the existing additive
+  migration. Old jobs retain null metadata. Preselection can transition once to
+  exact binding/refusal; the decision is immutable thereafter. Metadata and the
+  execution snapshot bind atomically. Terminal cleanup retains safe decision
+  facts and request identity hashes, not molecular/style preparation payloads.
+- `api.py` and `client.py` add owner-scoped recovery and preflight through the
+  existing service and framed file endpoint. A key binds the first molecular
+  input. Changed normalized render intent conflicts; retries recover before
+  downloading an attachment or reopening a path. Connection failure to an
+  existing controller does not authorize another submission. Custom recovery
+  compares canonical intent without revalidating today's style schema.
+- `mcp_server.py` defaults to nine tools: render, status, result, cancel, compact
+  catalog, recent operations, operation recovery, transfer recovery and quota.
+  The four legacy import/submit/structure tools require `compatibility=True`.
+  Their underlying HTTP/client APIs remain. Explicit identical rerenders require
+  expert/compatibility submission, `rerender=true` and a new stable key.
+- `delivery.py` retains safe decision/hash facts in verified receipts;
+  `consumer_records.py` validates their transport shape without importing the
+  selector or engine. Offline result retrieval needs no extra status call.
+  Compact results preserve partial verified artifacts and existing recovery
+  actions. Transfer recovery uses the same child, never replacement compute.
+  `engine.py` only extends the existing sealed module closures for these helpers.
+- The consumer skill and plugin documentation describe the current structured
+  tool contract, compact catalog and one-operation recovery. Catalog lookup is
+  local and static; a filtered response identifies the full installed digest's
+  scope. Common requests require no catalog/quota preflight. Submission remains
+  authoritative for admission. No installed-host or published-endpoint upgrade
+  is asserted by these repository changes.
+
+**Regressions before implementation/correction.** Temporary logs are retained
+outside the checkout, not included as repository artifacts.
+
+- Initial D2 contract run: **6 failed, 13 passed, 4 warnings**, 5.58s. Failures
+  demonstrated the absent structured request/compatibility discovery and new
+  phased workflow. The 13 invalid-request cases already failed closed under the
+  old signature; they were not evidence of implemented D2 validation.
+- Applicable color-follow regression: **2 failed, 41 deselected, 4 warnings**,
+  4.48s. Missing and inapplicable hints incorrectly reached the fake backend;
+  both now refuse before dispatch.
+- Catalog/receipt regressions: **2 failed, 47 deselected, 4 warnings**, 3.99s.
+  A changed admitted catalog could bind a different decision, and a second status
+  request could discard verified offline outputs. Both now pass against the
+  actual service/receipt paths.
+- Intermediate fixture issues were corrected without weakening boundaries:
+  client fixtures use loopback, privacy assertions check keys, and late capability
+  rejection uses stricter policy rather than mutating sealed engine declarations.
+  The latter mutation correctly latched the existing integrity guard.
+
+**Historical pre-review validation.** The prepared Python interpreter is denoted below
+by `TEST_PYTHON`; `VALIDATION_DIR` is fresh temporary storage outside the checkout.
+No dependencies were fetched. All pytest processes load `c3_boundary_guard`
+before application imports and disable bytecode/cache writes.
+
+```sh
+env PYTHONPATH=tests PYTHONDONTWRITEBYTECODE=1 "$TEST_PYTHON" -m pytest -q -rs -p no:cacheprovider -p c3_boundary_guard tests/test_d2_consumer.py tests/test_selection.py tests/test_mcp_contracts.py tests/test_spec.py tests/test_jobs_api.py tests/test_operation_lifecycle.py tests/test_result_recovery.py tests/test_gateway_recovery.py tests/test_c3_stored_retrieval.py tests/test_c3_blocked_clients.py tests/test_c3_migrations.py
+env PYTHONDONTWRITEBYTECODE=1 "$TEST_PYTHON" scripts/validate_c3_contracts.py --output "$VALIDATION_DIR"
+git diff --check
+```
+
+| Check | Final result |
+| --- | --- |
+| Focused D2/D1/MCP/spec/API/operation/recovery/migration suite | 368 passed, 4 warnings; 154.71s |
+| Complete guarded repository suite | 797 passed, 2 skipped, 4 warnings; 227.58s |
+| Installed-wheel contracts | 749 passed, 2 skipped, 4 warnings; 32.52s |
+| Recursive source/wheel/install package inventory and bytes | 90 package files equal |
+| Separate guarded D1 determinism interpreters | 4 passed |
+| Separate guarded D2 determinism interpreters | 4 passed |
+| Audited application process/network attempts | 0 in every final run/probe |
+
+There are 55 new D2 test cases. Repository passes increase from D1's 742 to 797;
+installed passes increase from 690 to 749 because the runner also now includes
+the four existing MCP contracts. The two skips remain the inherited developer
+child-process acceptance tests prohibited by the offline boundary. Four inherited
+warnings concern Authlib jose/httpx, Starlette TestClient httpx and AnyIO's old
+BlockingPortal alias. Build warnings only report intentionally disabled bytecode.
+The skill passed the installed skill validator.
+
+The established runner stages source outside the checkout, builds with
+`python -m build --wheel --no-isolation`, and installs with
+`python -m pip install --no-index --no-deps --target`. Installed tests run from
+the external directory with the installed package first on `PYTHONPATH`; origin
+assertions verify that import boundary. Recursive inventory and byte comparison
+cover every package resource, not just top-level Python files. Each D1 and D2
+probe independently loads the audit guard, verifies module origins and compares
+source/reordered/staged/installed output across hash seeds. D2 probes additionally
+check normalized intent, safe decisions, advertised schemas and the receipt
+reader's independence from selector/engine imports.
+
+Wheel SHA-256:
+`0d3ee9ad94230a88ef6d2af4028c323cec3f739761dfffdf493d105a57906445`.
+Engine build:
+`9eb91ede02159ab0fd98f44f65218bf729b78ae48ee124595344cbe7cf838c4d`.
+Unchanged D1 catalog digest:
+`bad80220b012977106c678d54178e7558f4038ca7ec480746b7e0b9d640d3835`.
+
+**Scope and remaining gates.** The primary-checkout preservation assertion from
+this earlier implementation is superseded by the current correction snapshot
+above. D1 selection/presets/spec,
+renderer, PyMOL, authentication, budget policy, C3 evidence, historical operations
+and unrelated fixtures are unchanged. This additive progress entry preserves the
+earlier record. Generated wheels, installations, logs and private evidence stay
+outside the checkout. No staging, commits, pushes or branch merges occurred.
+
+This is package-level offline contract evidence only. Live Mac, Slurm, Modal,
+backend/deployment and ChatGPT/Codex installed-host acceptance remain unexecuted.
+PyMOL adaptation, installation-routing templates, preset discovery expansion and
+plugin publication remain deferred. D1's structured content semantics and fit
+rules are unchanged. Full custom styles do not receive a fabricated built-in fit;
+rough mode cannot silently weaken hard dimensions. D2 ends here for review.
+
 ## D1 independent-review corrections — 2026-09-11
 
 Corrected only the three MAJOR findings from the independent D1 review in

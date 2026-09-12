@@ -66,6 +66,9 @@ def _recover(client, job_id, output, receipt_path, *, before_ack=None, strict_ac
         receipt = {'version': 2, 'job_id': job_id, 'artifacts': [], 'outputs': {}}
     if receipt.get('job_id') != job_id:
         raise ValueError('Receipt belongs to a different child operation')
+    if receipt.get('consumer_metadata') is not None:
+        from .consumer_records import result_metadata
+        receipt['consumer_metadata'] = result_metadata(receipt['consumer_metadata'])
     # Additive compatibility with earlier C3 receipts: their outer job_id was
     # already bound, while execution_identity contained only the three digests.
     if expected_execution is not None and isinstance(receipt.get('execution_identity'), dict):
@@ -93,6 +96,11 @@ def _recover(client, job_id, output, receipt_path, *, before_ack=None, strict_ac
         previous = _inventory_identity(receipt['artifacts'])
         if previous and (incoming != previous or receipt.get('inventory_complete', False) and not result['inventory_complete']):
             raise ValueError('Previously bound artifact inventory changed')
+        from .consumer_records import result_metadata
+        metadata = result_metadata(result)
+        if receipt.get('consumer_metadata') is not None and receipt['consumer_metadata'] != metadata:
+            raise ValueError('Previously bound result decision or specification changed')
+        receipt['consumer_metadata'] = metadata
         receipt['artifacts'] = [dict(item, expected=True) for item in result['expected_artifacts']]
         receipt['inventory_complete'] = result['inventory_complete']
         receipt['version'] = 2
@@ -178,7 +186,8 @@ def _recover(client, job_id, output, receipt_path, *, before_ack=None, strict_ac
     timings = sanitize(timings + delivery_timings)
     receipt['timings'] = timings
     _atomic(receipt_path, json.dumps(receipt).encode())
-    return {'job_id': job_id, 'outputs': paths, 'manifest': manifest,
+    return {**receipt.get('consumer_metadata', {}), 'job_id': job_id, 'outputs': paths, 'manifest': manifest,
+            'delivery_receipt': {'verified': complete, 'artifacts': [a['name'] for a in receipt['artifacts'] if a['name'] in paths]},
             'timings': timings,
             'delivery_timings': delivery_timings,
             'timing_integrity_conflict': receipt.get('timing_integrity_conflict', False),

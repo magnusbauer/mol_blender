@@ -468,7 +468,7 @@ def test_mcp_single_call_retry_status_and_native_result(tmp_path, payload, monke
     async def run():
         async with MCPClient(server) as client:
             args = {'file': {'download_url': 'https://example.org/test.cif', 'file_id': 'fixture', 'file_name': 'test.cif'},
-                    'options': {'preset': 'dried_paint_green', 'transparent_background': True}}
+                    'request': {'request_key': 'single-call', 'preset': 'dried_paint_green', 'transparent_background': True}}
             first = (await client.call_tool('render_structure', args)).structured_content
             service.start()
             state = (await client.call_tool('render_status', {'job_id': first['job_id'], 'wait_seconds': 1})).structured_content

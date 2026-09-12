@@ -261,6 +261,8 @@ def create_app(service: RenderService, *, token: str, public_url: str = "", sign
 
     @app.post("/v1/files/{format}")
     async def upload_file(format: str, request: Request, identity=Depends(owner)):
+        if converter is None and request.query_params.get('consumer') == '1':
+            raise JobError('The molecular converter is unavailable.', 'compute_unavailable', 503)
         if format not in {"pse", "cif", "mmcif", "pdb"} or converter is None:
             raise JobError("This service does not support that file conversion.", "unsupported", 422)
         data = await request.body()
@@ -284,14 +286,66 @@ def create_app(service: RenderService, *, token: str, public_url: str = "", sign
             if not 0 < size <= 65532 or len(raw) < 4 + size:
                 raise ValueError()
             settings = json.loads(raw[4:4 + size])
-            allowed = {'options', 'idempotency_key', 'operation_key', 'rerender', 'selection'}
+            allowed = {'options', 'idempotency_key', 'operation_key', 'rerender', 'selection', 'consumer_request', 'consumer_policy'}
             if not isinstance(settings, dict) or set(settings) - allowed:
+                raise ValueError()
+            if 'consumer_request' in settings and set(settings) - {'consumer_request', 'consumer_policy'}:
+                raise ValueError()
+            if 'consumer_policy' in settings and 'consumer_request' not in settings:
                 raise ValueError()
         except ValueError as exc:
             raise JobError('Invalid render request envelope') from exc
+        if 'consumer_request' in settings:
+            from . import consumer
+            consumer.adapter_public(settings.get('consumer_policy'))
+            plan = await asyncio.to_thread(service.consumer_preflight, identity, settings['consumer_request'],
+                                           trusted=not service.store.policy.public, adapter_policy=settings.get('consumer_policy'))
+            if 'replay' in plan:
+                return plan['replay']
+            if not consumer.executable(plan['decision']):
+                return consumer.non_admission(plan['decision'], 'configured')
+            return await asyncio.to_thread(service.admit_consumer_file, identity, raw[4 + size:], '.' + format,
+                request.query_params.get('name', 'structure.' + format), converter, plan)
         return await asyncio.to_thread(service.render_file, identity, raw[4 + size:], '.' + format,
             request.query_params.get('name', 'structure.' + format), converter,
             settings.pop('options', {}), **settings)
+
+    def consumer_envelope(data):
+        from . import consumer
+        if isinstance(data, dict) and 'request' in data:
+            if set(data) != {'request', 'consumer_policy'}:
+                raise JobError('Invalid consumer envelope.', 'selection_invalid', 422)
+            consumer.adapter_public(data['consumer_policy'])
+            return data['request'], data['consumer_policy']
+        return data, None
+
+    @app.post('/v1/consumer/recover')
+    async def recover_consumer(request: Request, identity=Depends(owner)):
+        data, policy = consumer_envelope(await body(request))
+        return {'job': service.recover_render(identity, data, trusted=not service.store.policy.public, adapter_policy=policy)}
+
+    @app.post('/v1/consumer/preflight')
+    async def preflight_consumer(request: Request, identity=Depends(owner)):
+        from . import consumer
+        data, policy = consumer_envelope(await body(request))
+        plan = await asyncio.to_thread(service.consumer_preflight, identity, data,
+                                       trusted=not service.store.policy.public, adapter_policy=policy)
+        if 'replay' in plan:
+            return {'job': plan['replay']}
+        if not consumer.executable(plan['decision']):
+            return {'refusal': consumer.non_admission(plan['decision'], 'configured')}
+        return {'ready': True}
+
+    @app.post('/v1/consumer/submit')
+    async def submit_consumer(request: Request, identity=Depends(owner)):
+        data = await body(request)
+        from . import consumer
+        if (not isinstance(data, dict) or set(data) - {'input_id', 'request', 'rerender', 'consumer_policy'}
+                or not {'input_id', 'request', 'rerender'} <= set(data) or type(data['rerender']) is not bool):
+            raise JobError('Invalid consumer submission.', 'selection_invalid', 422)
+        consumer.adapter_public(data.get('consumer_policy'))
+        return await asyncio.to_thread(service.submit_consumer, identity, data['input_id'], data['request'],
+            trusted=not service.store.policy.public, rerender=data['rerender'], adapter_policy=data.get('consumer_policy'))
 
     @app.get('/v1/jobs')
     async def recent_jobs(identity=Depends(owner)):

@@ -15,7 +15,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Protocol
 
-from . import core
+from . import core, consumer_errors
 from .jobs import JobError, JobStore
 from .engine import protect, process_seal, RestartRequired, EngineMismatch, ExecutionUnknown
 from .compatibility import from_exception
@@ -139,7 +139,7 @@ def freeze_file_options(options):
 
 
 class RenderService:
-    def __init__(self, store: JobStore, backend: Backend, *, recover: bool = True, converter=None):
+    def __init__(self, store: JobStore, backend: Backend, *, recover: bool = True, converter=None, selection_policy=None):
         self.integrity = protect('admission')
         self._imports_guard = threading.Lock()
         self._imports = {}
@@ -148,6 +148,7 @@ class RenderService:
         self.store.integrity_lock = self.integrity.lock
         self.backend = backend
         self.converter = converter
+        self.selection_policy = selection_policy
         if hasattr(backend, 'set_progress'):
             backend.set_progress(store.stage)
         self.wakeup = threading.Event()
@@ -215,6 +216,8 @@ class RenderService:
             raise JobError("Choose a .pse, .cif, or .pdb file.")
         if len(data) > self.store.policy.max_upload_bytes:
             raise JobError("File is too large.", "too_large", 413)
+        if converter is None:
+            raise JobError('The molecular converter is unavailable.', 'compute_unavailable', 503)
         key = suffix + ':' + hashlib.sha256(data).hexdigest()
         with self._owner_import(owner):
             existing = self.store.find_source(owner, key)
@@ -226,7 +229,8 @@ class RenderService:
             except (RestartRequired, EngineMismatch, ExecutionUnknown):
                 raise
             except Exception as exc:
-                raise JobError("The molecular file could not be converted. Attach a valid PSE, CIF, or PDB file.", "invalid_structure", 422) from exc
+                error = consumer_errors.from_exception(exc, default='invalid_structure')
+                raise JobError(error['error_message'], error['code'], 422) from None
             return self.import_payload(owner, payload, name, source_key=key)
 
     @staticmethod
@@ -250,8 +254,96 @@ class RenderService:
         except (TypeError, ValueError) as exc:
             raise JobError('Render options must be valid JSON.') from exc
 
+    def recover_render(self, owner, request, *, trusted=False, adapter_policy=None):
+        """Owner-scoped intent lookup; no admission, selection, file read or upload."""
+        from . import consumer
+        normalized = consumer.normalize_request(request, trusted=trusted and not self.store.policy.public
+                                                and not consumer.adapter_public(adapter_policy))
+        return self.store.operation_replay(owner, normalized['request_key'], consumer.identity(normalized))
+
+    def consumer_preflight(self, owner, request, *, trusted=False, adapter_policy=None):
+        from . import consumer
+        trusted = trusted and not self.store.policy.public and not consumer.adapter_public(adapter_policy)
+        normalized = consumer.normalize_request(request, trusted=trusted)
+        replay = self.store.operation_replay(owner, normalized['request_key'], consumer.identity(normalized))
+        if replay:
+            return {'replay': replay}
+        policy = consumer.server_policy(not trusted, self.selection_policy)
+        if policy.allowed_presets is not None and (not policy.allowed_presets
+                or normalized['preset'] is not None and normalized['preset'] not in policy.allowed_presets):
+            raise JobError('selection_policy_refused: preset excluded by server policy', 'selection_policy_refused', 403)
+        try:
+            decision = consumer.preselect(normalized, policy)
+        except JobError:
+            raise
+        except (ValueError, TypeError, core.RunnerError) as exc:
+            raise JobError('The structured preset selection is invalid.', 'selection_invalid', 422) from exc
+        return {'request': consumer.freeze_request(normalized, decision), 'decision': decision,
+                'identity': consumer.identity(normalized), 'public': policy.public}
+
+    def consumer_exact(self, request, initial, public, bundle):
+        """Authoritative exact-context D1 gate shared by both MCP admissions."""
+        from . import consumer
+        decision = consumer.preselect(request, consumer.server_policy(public, self.selection_policy), bundle=bundle)
+        if decision is not None and initial['catalog_digest'] != decision.catalog_digest:
+            raise JobError('Installed catalog differs from preselection', 'catalog_changed', 422)
+        return decision
+
+    def submit_consumer(self, owner, input_id, request, *, trusted=False, rerender=False, adapter_policy=None):
+        """Compatibility MCP admission for an owner-scoped validated import."""
+        from . import consumer
+        trusted = trusted and not self.store.policy.public and not consumer.adapter_public(adapter_policy)
+        self._protect('admission')
+        with self._owner_import(owner), self.store.lock:
+            normalized = consumer.normalize_request(request, trusted=trusted and not self.store.policy.public)
+            fingerprint = consumer.identity(normalized)
+            replay = self.store.operation_replay(owner, normalized['request_key'], fingerprint, input_id=input_id)
+            if replay:
+                return replay
+            replay = self.store.submission_replay(owner, input_id, normalized['request_key'], fingerprint, rerender=rerender)
+            if replay:
+                return self.store.remember_operation(owner, normalized['request_key'], replay,
+                    input_id=input_id, client_hash=fingerprint)
+            plan = self.consumer_preflight(owner, normalized, trusted=trusted)
+            if not consumer.executable(plan['decision']):
+                return consumer.non_admission(plan['decision'], 'configured')
+            bundle = self.store.input(owner, input_id)
+            if 'source_file' in bundle:
+                raise JobError('Compatibility submission requires a validated import.', 'invalid_structure', 422)
+            first = consumer.metadata(plan['decision'], request=plan['request'], fingerprint=plan['identity'],
+                                      custom='style_doc' in plan['request'])
+            try:
+                exact = self.consumer_exact(plan['request'], first['preset_decision'], plan['public'], bundle)
+                if not consumer.executable(exact):
+                    return consumer.non_admission(exact, 'configured')
+                options = prepare_options(consumer.render_options(plan['request']), bundle,
+                    public=plan['public'], timeout=self.store.policy.max_job_seconds)
+                consumer.validate_bundle_controls(options, bundle)
+            except JobError:
+                raise
+            except (ValueError, TypeError, core.RunnerError) as exc:
+                raise JobError('Exact-context selection is invalid.', 'selection_invalid', 422) from exc
+            metadata = consumer.metadata(exact, previous=first, phase='bound')
+            result = self.store.submit(owner, input_id, options, normalized['request_key'],
+                client_hash=plan['identity'], operation_key=normalized['request_key'], rerender=rerender,
+                consumer_metadata=metadata)
+            self.store.stage(result['job_id'], 'waiting_for_compute')
+        self.wakeup.set()
+        return result
+
+    def admit_consumer_file(self, owner, data, suffix, name, converter, plan):
+        """Internal adapter continuation after preflight; plan is never client JSON."""
+        from . import consumer
+        if 'replay' in plan:
+            return plan['replay']
+        if not consumer.executable(plan['decision']):
+            raise JobError('Selection is not executable', 'selection_refused', 422)
+        request = plan['request']
+        return self.render_file(owner, data, suffix, name, converter, consumer.render_options(request),
+            operation_key=request['request_key'], _consumer=plan)
+
     def render_file(self, owner, data, suffix, name, converter, options, *, idempotency_key=None,
-                    operation_key=None, rerender=False, selection='(all)'):
+                    operation_key=None, rerender=False, selection='(all)', _consumer=None):
         """Commit the existing queue's handle before conversion or compute."""
         self._protect('admission')
         from .spec import _check_options
@@ -266,11 +358,13 @@ class RenderService:
                 raise JobError('Operation and transport keys must contain 1 to 128 characters')
         if rerender and idempotency_key is None and operation_key is None:
             raise JobError('An explicit repeat requires a stable operation or idempotency key')
-        if suffix not in {'.pse', '.cif', '.mmcif', '.pdb'} or converter is None:
+        if converter is None:
+            raise JobError('The molecular converter is unavailable.', 'compute_unavailable', 503)
+        if suffix not in {'.pse', '.cif', '.mmcif', '.pdb'}:
             raise JobError('This service does not support that file conversion.', 'unsupported', 422)
         if len(data) > self.store.policy.max_upload_bytes:
             raise JobError('File is too large.', 'too_large', 413)
-        client_hash = self._client_hash(options, rerender=rerender)
+        client_hash = _consumer['identity'] if _consumer is not None else self._client_hash(options, rerender=rerender)
         source_key = suffix + ':' + hashlib.sha256(data).hexdigest()
         operation_key = operation_key or idempotency_key
         if selection != '(all)':
@@ -287,6 +381,15 @@ class RenderService:
             if existing:
                 return self.store.remember_operation(owner, operation_key, existing, client_hash=client_hash, source_key=source_key)
             frozen = freeze_file_options(options)
+            metadata = None
+            if _consumer is not None:
+                from . import consumer
+                frozen['consumer_request'] = _consumer['request']
+                frozen['consumer_public'] = _consumer['public']
+                # Preserve fit-relevant identity in effective-render dedup too.
+                frozen['consumer_identity'] = _consumer['identity']
+                metadata = consumer.metadata(_consumer['decision'], request=_consumer['request'],
+                    fingerprint=_consumer['identity'], custom='style_doc' in _consumer['request'])
             # Raw bytes are private temporary input, not a StructureBundle.
             # The dispatcher validates the conversion and resolves once before
             # entering any compute backend. Restart never repeats live work.
@@ -297,7 +400,7 @@ class RenderService:
                 key = idempotency_key or operation_key or secrets.token_hex(16)
                 replay = self.store.submission_replay(owner, source['input_id'], key, client_hash, rerender=rerender)
                 job = self.store.remember_operation(owner, operation_key, replay, input_id=source['input_id'], client_hash=client_hash, source_key=source_key) if replay else self.store.submit(owner, source['input_id'], frozen, key,
-                    client_hash=client_hash, rerender=rerender, operation_key=operation_key)
+                    client_hash=client_hash, rerender=rerender, operation_key=operation_key, consumer_metadata=metadata)
             self.wakeup.set()
             return job
 
@@ -389,10 +492,15 @@ class RenderService:
         from .telemetry import measure, record
         from .gateway import TransferPending
         from .execution import StoredSnapshotIntegrityError
+        from . import consumer_records, consumer_errors
         recovering_child = bool(job.get('remote_id') or job.get('remote_phase'))
         sink = lambda timing: self.store.add_timings(identifier, [timing])
+        initial_metadata = None
         try:
             self._protect('admission')
+            with self.store.lock:
+                initial_metadata = self.store._consumer_metadata(self.store.db.execute(
+                    'SELECT * FROM jobs WHERE id=?', (identifier,)).fetchone())
             request = json.loads(job["options"])
             payload = None if recovering_child else (json.loads(job['execution'])['bundle'] if job.get('execution') else self.store.input(job["owner"], job["input_id"]))
             if 'prepare_file' in request and not recovering_child:
@@ -402,7 +510,7 @@ class RenderService:
                 self.store.reserve_conversion(job['owner'], job_id=identifier)
                 raw = payload['source_file']
                 if self.converter is None:
-                    raise RuntimeError('File converter unavailable after restart; execution was not retried')
+                    raise JobError('File converter unavailable after restart; execution was not retried', 'compute_unavailable', 503)
                 kwargs = {'selection': raw['selection']} if raw['selection'] != '(all)' else {}
                 self._protect('conversion')
                 self.store.checkpoint(identifier, 'conversion', dispatched=True)
@@ -415,9 +523,39 @@ class RenderService:
                 if 'style_doc' not in request['prepare_file'] and captured is None:
                     raise RuntimeError('Queued legacy file job lacks its preset snapshot; execution was not substituted')
                 definition = PresetDefinition(**captured) if captured is not None else None
-                request = prepare_options(request['prepare_file'], payload, public=p.public,
-                                          timeout=p.max_job_seconds, preset_definition=definition)
-                self.store.bind_spec(identifier, request, payload)
+                consumer_metadata = None
+                public = p.public
+                if 'consumer_request' in request:
+                    from . import consumer
+                    frozen_consumer = request['consumer_request']
+                    public = public or request['consumer_public']
+                    try:
+                        decision = self.consumer_exact(frozen_consumer, initial_metadata['preset_decision'], public, payload)
+                    except (ValueError, TypeError, core.RunnerError) as exc:
+                        failure = getattr(exc, 'code', None)
+                        if failure not in {'catalog_changed', 'capability_unavailable'}:
+                            failure = 'selection_invalid'
+                        self.store.bind_consumer_decision(identifier, consumer.metadata(None,
+                            previous=initial_metadata, phase='refused',
+                            error=failure))
+                        raise JobError('Exact-context selection validation failed before backend dispatch', failure, 422) from exc
+                    if not consumer.executable(decision):
+                        self.store.bind_consumer_decision(identifier, consumer.metadata(decision, previous=initial_metadata,
+                            phase='refused', error='capability_unavailable' if consumer.refusal_category(decision) == 'capability_unavailable' else 'selection_refused'))
+                        raise JobError('Exact-context selection refused before backend dispatch', 'selection_refused', 422)
+                    consumer_metadata = consumer.metadata(decision, previous=initial_metadata, phase='bound')
+                try:
+                    request = prepare_options(request['prepare_file'], payload, public=public,
+                                              timeout=p.max_job_seconds, preset_definition=definition)
+                    if consumer_metadata is not None:
+                        consumer.validate_bundle_controls(request, payload)
+                except (JobError, core.RunnerError) as exc:
+                    if consumer_metadata is not None:
+                        self.store.bind_consumer_decision(identifier, consumer.metadata(None,
+                            previous=initial_metadata, phase='refused',
+                            error='color_follow_unavailable' if getattr(exc, 'code', None) == 'color_follow_unavailable' else 'resolution_invalid'))
+                    raise
+                self.store.bind_spec(identifier, request, payload, consumer_metadata=consumer_metadata)
                 self.store.checkpoint(identifier, 'dispatch')
             elif not job.get('remote_phase'):
                 sink(record('conversion', 'converter', status='skipped'))
@@ -460,6 +598,8 @@ class RenderService:
             self.store.finish(identifier, result=artifacts, seconds=time.monotonic() - started)
             if self.store.cancelled(identifier):
                 shutil.rmtree(self.store.artifacts / identifier, ignore_errors=True)
+        except consumer_records.MetadataError:
+            self.store.block(identifier, 'recovery_required', 'admitted')
         except StoredSnapshotIntegrityError:
             self.store.block(identifier, 'recovery_required', 'transfer' if recovering_child else 'dispatch')
         except RestartRequired as exc:
@@ -492,10 +632,19 @@ class RenderService:
             if completed is not None and not self.store.cancelled(identifier):
                 self.store.transfer_pending(identifier, 'artifact_preparation_failed')
                 return
-            log.exception("Render job %s failed", identifier)
-            message = "Render failed. Check structure, preset, and resource limits." if self.store.policy.public else str(exc)
+            message = "Render failed. Check structure, preset, and resource limits." if self.store.policy.public or initial_metadata is not None else str(exc)
             seconds = self.store.policy.max_job_seconds if getattr(self.backend, "paid", False) else time.monotonic() - started
-            self.store.finish(identifier, error=message, seconds=seconds, compute_started=compute_started)
+            category = consumer_errors.from_exception(exc,
+                default='render_failed' if compute_started else 'invalid_structure')['error_category']
+            if initial_metadata is not None:
+                log.warning('Consumer operation failed: category=%s job_id=%s', category, identifier)
+                message = consumer_errors.MESSAGES[category]
+                if category == 'cancelled':
+                    self.store.cancel(job['owner'], identifier)
+            else:
+                log.exception("Render job %s failed", identifier)
+            self.store.finish(identifier, error=message, seconds=seconds, compute_started=compute_started,
+                              error_category=category)
             shutil.rmtree(self.store.artifacts / identifier, ignore_errors=True)
         finally:
             self.last_activity = time.time()
@@ -547,13 +696,15 @@ class RenderService:
                 raise
         return {"job_id": identifier, "artifacts": records, "manifest": manifest, "bytes": sum(item["size"] for item in records)}
 
-    def artifact(self, owner: str, identifier: str, name: str) -> tuple[Path, str]:
-        result = self.store.result(owner, identifier, inventory=True)
+    def artifact(self, owner: str, identifier: str, name: str, *, _inventory=None) -> tuple[Path, str]:
+        result = self.store.result(owner, identifier, inventory=True) if _inventory is None else _inventory
         record = next((item for item in result["artifacts"] if item["name"] == name), None)
         if record is None or name not in {"render.png", "render.blend", "manifest.json"}:
             if any(a['name'] == name for a in result['expected_artifacts']):
                 raise JobError('Artifact unavailable.', 'artifact_unavailable', 410)
             raise JobError("Artifact not found.", "not_found", 404)
+        if record.get('expires_at') is not None and record['expires_at'] <= self.store.clock():
+            raise JobError('Artifact expired.', 'artifact_expired', 410)
         from .artifacts import valid_copy
         path = valid_copy(self.store.db, identifier, record)
         if path is None:
