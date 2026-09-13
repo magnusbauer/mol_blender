@@ -20,6 +20,9 @@ CONDITIONS = {
 @pytest.mark.parametrize('adapter', ['direct', 'cli', 'pymol'])
 def test_wait_reports_block_and_later_uses_same_operation(tmp_path, payload, monkeypatch,
                                                         condition, next_action, adapter, capsys):
+    monkeypatch.setattr(
+        pymol_bridge_plugin, '_PACKAGE_ROOT', str(tmp_path / 'isolated-package')
+    )
     store, service, source, job = admitted(tmp_path/'store', payload)
     identifier = job['job_id']
     store.block(identifier, condition, 'dispatch')

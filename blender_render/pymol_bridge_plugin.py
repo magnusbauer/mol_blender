@@ -173,6 +173,24 @@ _TASKS_LOCK = threading.RLock()
 _ACTION_LOCK = threading.RLock()
 
 
+def installation_defaults():
+    """Deployment settings live beside the package, outside the engine assets."""
+    path = Path(_PACKAGE_ROOT) / 'pymol-defaults.json'
+    if not path.exists():
+        return {}
+    values = json.loads(path.read_text())
+    allowed = {'preset', 'mode', 'server_host', 'server_port'}
+    if not isinstance(values, dict) or set(values) - allowed:
+        raise ValueError('Unsupported PyMOL installation defaults')
+    for key in ('preset', 'mode', 'server_host'):
+        if key in values and (not isinstance(values[key], str) or not values[key].strip()
+                              or any(char in values[key] for char in ('\n', '\0'))):
+            raise ValueError('Invalid PyMOL default: ' + key)
+    if 'server_port' in values and (type(values['server_port']) is not int or not 1 <= values['server_port'] <= 65535):
+        raise ValueError('Invalid PyMOL default: server_port')
+    return values
+
+
 def try_load_preview(cmd_obj, output_png):
     """Load a verified PNG, retaining a usable path if presentation fails."""
     try:
@@ -741,8 +759,12 @@ def _connection(
                 or parsed.query
                 or parsed.fragment
                 or parsed.path not in {"", "/"}
-                or parsed.scheme == "http"
-                and parsed.hostname not in {"localhost", "127.0.0.1", "::1"}
+                or (mode == "lab" and parsed.scheme != "http")
+                or (
+                    parsed.scheme == "http"
+                    and parsed.hostname not in {"localhost", "127.0.0.1", "::1"}
+                    and mode != "lab"
+                )
             )
         except ValueError:
             invalid = True
@@ -750,6 +772,8 @@ def _connection(
         if invalid:
             raise ValueError("server_host must be a credential-free service host or root URL")
         safe = {"kind": "direct", "host": base_url.rstrip("/"), "port": actual_port}
+        if mode == "lab":
+            safe["lab_http"] = True
         label = _parse_identifier(profile or mode or "direct", "profile")
         return dict(safe), safe, label
     selected = profile or (
@@ -784,10 +808,14 @@ def _make_client(
     if connection["kind"] == "direct":
         from blender_render.remote_client import _normalize_base_url
 
+        lab_http = connection.get("lab_http") is True
+        options = {"timeout": timeout}
+        if lab_http:
+            options["lab_http"] = True
         return Client(
             _normalize_base_url(str(connection["host"]), int(connection["port"])),
-            os.environ.get("BLENDER_RENDER_TOKEN", ""),
-            timeout=timeout,
+            "" if lab_http else os.environ.get("BLENDER_RENDER_TOKEN", ""),
+            **options,
         )
     kwargs = dict(admission_options or {})
     kwargs.pop("kind", None)
@@ -1543,9 +1571,9 @@ def _result_for_task(
 
 def bridge_render(
     selection="(all)",
-    preset="preset_1_interface",
+    preset="",
     style_json="",
-    mode="local",
+    mode="",
     output_dir=".",
     output_name="render.png",
     rough=0,
@@ -1554,7 +1582,7 @@ def bridge_render(
     raw_view="",
     state=-1,
     server_host="",
-    server_port=8765,
+    server_port="",
     server_timeout=1800,
     profile="",
     use_apptainer=0,
@@ -1590,6 +1618,22 @@ def bridge_render(
     _ensure_admission_deadline_supported()
 
     text = _normalize_cli_string
+    mode_value = text(mode)
+    profile_value = text(profile)
+    host_value = text(server_host)
+    port_value: Any = server_port
+    defaults = installation_defaults()
+    default_mode = defaults.get("mode", "local")
+    # A package-level default is explicit installation configuration. Supplying
+    # another mode/profile selects a different connection and does not inherit
+    # the configured lab host. A host-only override keeps that lab transport.
+    if not profile_value and (not mode_value or mode_value == default_mode):
+        mode_value = mode_value or default_mode
+        host_value = host_value or defaults.get("server_host", "")
+        port_value = text(port_value) or defaults.get("server_port", 8765)
+    else:
+        mode_value = mode_value or "local"
+        port_value = text(port_value) or 8765
     if legacy:
         resources = [key for key in legacy if key.startswith("slurm_") or key == "interactive_launcher"]
         if resources:
@@ -1601,17 +1645,17 @@ def bridge_render(
         raise ValueError("attach=0 is unsupported; explicitly stop the persistent service instead")
 
     admission_connection, safe_connection, selected = _connection(
-        mode=text(mode),
-        profile=text(profile),
-        server_host=text(server_host),
-        server_port=server_port,
+        mode=mode_value,
+        profile=profile_value,
+        server_host=host_value,
+        server_port=port_value,
         use_apptainer=use_apptainer,
         apptainer_image=apptainer_image,
         blender_exe=blender_exe,
         attach_only=attach_only,
     )
     options: dict[str, Any] = {
-        "preset": text(preset) or "preset_1_interface",
+        "preset": text(preset) or defaults.get("preset", "preset_1_interface"),
         "rough": _parse_bool(rough),
         "keep_temp": _parse_bool(keep_temp),
     }

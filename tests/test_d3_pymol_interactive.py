@@ -18,6 +18,9 @@ from blender_render.client import ClientError
 @pytest.fixture(autouse=True)
 def isolated_task_registry(monkeypatch, tmp_path):
     monkeypatch.setenv("BLENDER_RENDER_HOME", str(tmp_path / "home"))
+    # Operator deployment defaults are intentionally outside renderer identity;
+    # lifecycle contracts must not inherit the checkout's local lab route.
+    monkeypatch.setattr(plugin, "_PACKAGE_ROOT", str(tmp_path / "package"))
     with plugin._TASKS_LOCK:
         plugin._TASKS.clear()
     yield

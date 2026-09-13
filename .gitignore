@@ -16,4 +16,5 @@ build/
 .env.*
 !.env.example
 .DS_Store
+pymol-defaults.json
 renders/

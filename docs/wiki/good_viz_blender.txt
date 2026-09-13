@@ -1,0 +1,64 @@
+====== Looking Good in Blender ======
+
+Render your current PyMOL scene on the lab GPU. Computers inside the approved lab network connect directly: no token, SSH tunnel, or local Blender installation is needed. macOS and Linux use the same remote renderer.
+
+===== 1) Load the current PyMOL plugin =====
+
+Restart PyMOL once after installing or updating the plugin.
+
+On a lab computer with the shared installation, enter this in PyMOL (or add it to your ''.pymolrc''):
+
+<code python>
+run SHARED_INSTALL/blender_render/pymol_bridge_plugin.py
+</code>
+
+On your own computer, unpack the lab-provided client bundle into your home directory, then enter:
+
+<code python>
+run ~/blender-render-client/blender_render/pymol_bridge_plugin.py
+</code>
+
+===== 2) Render from inside the lab =====
+
+Try a public structure:
+
+<code python>
+fetch 1qys
+blender_render
+</code>
+
+For your own structure, load and orient it normally, then run ''blender_render''. The lab installation automatically selects the lab server and ''neon_duplex_hero''. It exports the enabled scene, colors and camera.
+
+For a fast preview, or to choose another preset:
+
+<code python>
+blender_render rough=1
+blender_render preset=preset_1_interface, output_name=figure.png
+</code>
+
+The PNG is saved in PyMOL's current directory and displayed in PyMOL. Use ''output_dir'' to choose another directory, or ''save_blend=1'' to also download a Blender scene. Rough mode changes performance settings only.
+
+===== 3) Connecting from outside the lab =====
+
+If you have SSH access to the renderer, run this on your own computer:
+
+<code bash>
+ssh -N -o ExitOnForwardFailure=yes -L 127.0.0.1:8768:127.0.0.1:8768 USER@RENDER_HOST
+</code>
+
+Keep that terminal open. In PyMOL, use the local end of the tunnel:
+
+<code python>
+blender_render server_host=127.0.0.1, rough=1
+</code>
+
+Use your normal SSH jump host if needed. Inside the approved lab network, this tunnel is unnecessary.
+
+===== Access and troubleshooting =====
+
+  * Direct access is restricted to the configured lab networks. Outside addresses need SSH access.
+  * Jobs are associated with the source computer. People using the same Digs host share that identity; this is not isolation between individual Digs accounts.
+  * Requests enter one shared FIFO queue. The Blender worker stops after 15 idle minutes and starts again when needed.
+  * A connection error is not a reason to resubmit a job that already has an ID. Check its status first.
+  * ''mode=local'' explicitly renders on the computer running PyMOL. Bare ''blender_render'' uses the lab installation's configured server and neon preset.
+  * Other Python/API clients can use the same scene-upload and job API. Direct ''.pse'' uploads and service administration are not enabled on this endpoint.

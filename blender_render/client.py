@@ -6,7 +6,7 @@ import os
 import time
 import uuid
 from pathlib import Path
-from urllib.request import Request, build_opener, HTTPRedirectHandler
+from urllib.request import Request, build_opener, HTTPRedirectHandler, ProxyHandler
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit, urlencode, quote
 
@@ -40,14 +40,20 @@ class NoRedirect(HTTPRedirectHandler):
 
 
 class Client:
-    def __init__(self, url, token, timeout=30):
+    def __init__(self, url, token, timeout=30, *, lab_http=False):
         self.url, self.token, self.timeout = url.rstrip("/"), token, timeout
         parsed = urlsplit(self.url)
         if parsed.scheme not in {"http", "https"} or parsed.username or parsed.password:
             raise ClientError("Provide an HTTP(S) service endpoint without embedded credentials.")
-        if parsed.scheme == "http" and parsed.hostname not in {"localhost", "127.0.0.1", "::1"}:
+        if parsed.scheme == "http" and parsed.hostname not in {"localhost", "127.0.0.1", "::1"} and not lab_http:
             raise ClientError("Remote services require HTTPS or a loopback SSH tunnel.")
-        self.opener = build_opener(NoRedirect())
+        if lab_http:
+            if parsed.scheme != 'http' or token:
+                raise ClientError('Lab mode requires an HTTP endpoint without a client token')
+            from .lab_transport import LabHTTPHandler
+            self.opener = build_opener(ProxyHandler({}), LabHTTPHandler(), NoRedirect())
+        else:
+            self.opener = build_opener(NoRedirect())
 
     def request(self, method, path, body=None, *, binary=False, raw=False):
         if method == "POST" and body is None:
@@ -356,6 +362,15 @@ def _connect_client(profile="local", *, read_only=None, admission=False, intenti
             connection["url"],
             access_token(connection["url"]),
             timeout=float(request_timeout) if request_timeout is not None else 120,
+        )
+    if connection.get('kind') == 'lab_http':
+        if controller_owner is not None:
+            raise ClientError('Lab network access cannot be used for controller dispatch')
+        return Client(
+            connection['url'],
+            '',
+            timeout=float(request_timeout) if request_timeout is not None else 30,
+            lab_http=True,
         )
     if controller_owner is not None:
         path = connection.get('controller_token_file')

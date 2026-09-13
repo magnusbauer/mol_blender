@@ -218,6 +218,7 @@ def test_reference_gates_follow_representation_not_names():
 def test_custom_surface_through_adapter_to_worker(adapter, bundle, tmp_path, monkeypatch):
     import blender_render.client
     from blender_render import pymol_bridge_plugin as plugin
+    monkeypatch.setattr(plugin, "_PACKAGE_ROOT", str(tmp_path / "isolated-package"))
     monkeypatch.setattr(core, "TMP_BRIDGE_ROOT", tmp_path / "runs")
     monkeypatch.setenv("BLENDER_RENDER_HOME", str(tmp_path / "config"))
     document = surface_style()
