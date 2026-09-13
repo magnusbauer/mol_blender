@@ -1,5 +1,83 @@
 # Blender Render implementation progress
 
+## Milestone D integration checkpoint — 2026-09-13
+
+The bounded Milestone D implementation is complete on `codex/milestone-d`.
+D1 (`fc74669`) supplies shared best-fit selection and the compact catalog; D2
+(`5be0e72`) supplies the thin MCP consumer path; D3 (`41e0f7d`) supplies the
+explicit, thread-free PyMOL job lifecycle; and D4 (`73f9499`) supplies
+deterministic hosted/private plugin and marketplace packaging. Merge commit
+`44298c5` integrates the existing direct lab-network transport and installation
+defaults without introducing another renderer, queue, or preset schema.
+
+D3 now returns immediately after durable admission in nonblocking mode and
+exposes explicit status, result, cancellation, and recovery commands. One stable
+operation key and service job ID survive ambiguous submission and intervention
+states. Blocking partial delivery raises a typed error that retains verified
+outputs. Saved reservations contain only bounded collision metadata, never
+connection or destination authority. A single monotonic deadline covers action
+and receipt locks, status/wait requests, artifact transfer, and acknowledgement.
+`submit_existing` permits submission through an already-running controller
+without starting or allocating one; result-only attachment still prohibits POST.
+
+D4 packages exactly one hosted, private STDIO, or private HTTP route from the
+reviewed skill/assets. Private variants contain no owner endpoint/app identity,
+credentials, or shared fallback. Generated ownership is fixed by the requested
+plugin/marketplace identity and validated route metadata. `--force` can refresh
+endpoint/profile/executable details only when route, authentication/app topology,
+plugin name, marketplace name, and generated path set are unchanged. Forged
+optional app entries and forged marketplace plugin prefixes safely refuse before
+publication and cannot delete operator files. Route/topology changes require a
+new destination.
+
+The lab merge keeps the token-free transport explicitly opt-in. It disables
+ambient proxies, pins a validated private IPv4 resolution, retains D3 deadlines
+on every admission/follow-up client, and never persists the connection as
+reservation authority. Non-lab tests isolate operator-local
+`pymol-defaults.json`; the real installation can still make a bare PyMOL command
+select its configured lab endpoint and preset.
+
+Final executed validation on the integrated source:
+
+| Check | Result |
+| --- | --- |
+| Complete guarded repository suite | **1,222 passed, 4 skipped, 4 warnings in 304.26s**; zero audited process/network attempts. |
+| Installed D4 package contracts | **82 passed, 1 intentional guard-self-test skip in 0.63s**; zero audited attempts. |
+| Installed D1-D3, PyMOL, lab and inherited contracts | **1,099 passed, 3 skipped, 4 warnings in 48.74s**; zero audited attempts. |
+| Package forms | Renderer bytes equal across source, staging, source distribution, direct wheel, sdist-built wheel and external target install; direct/sdist wheel payloads equal. |
+| Route determinism | Source, staging, wheel extraction and install match across different working directories, homes, users and hash seeds; digest `78b904b598b822de6e91eca00aa7991c4071478f9d68832deb62bdcfd822074b`. |
+| Route/privacy validation | Six generated route variants passed; all owner-ID, credential, personal-path and generated-variant leak scans were empty. |
+| Official validators | Seven plugin variants and all fourteen render/develop skills passed the installed Codex validators. |
+| Real PyMOL 3.1.8 | Current source and installed wheel both imported, registered and reloaded exactly the five D3 commands in a headless PyMOL process. No render or PNG presentation ran. |
+| Whitespace/syntax | `git diff --check` and Python compilation passed. |
+
+The final evidence directory is `/tmp/blender-milestone-d-final-evidence`.
+The externally installed wheel SHA-256 is
+`319f3f6360fc2607511a216092355115d08de6425bedd55a94a3614cdcfc98ce`;
+the source distribution SHA-256 is
+`fd0d7abb643167b62131fe2eb6ad091633ea8d4568798bcf7e170c6dfe800079`;
+the sdist-built wheel SHA-256 is
+`adf70bcf716e301c321be145688aa6ec4c1153536afd3fe98f55db85bc999c72`.
+Both wheels contain equal payloads; archive hashes are not claimed reproducible.
+The installed engine build is
+`942d5a2e01efef11b6d1d8385e0e9abfa9b7797e84d0adba10bf9aebb92ded62`
+with 93 engine package files plus its manifest. Dependencies were not fetched;
+the prepared test environment was reused.
+
+The four source skips are the D4 negative guard self-test under an already loaded
+guard, two inherited A/B child-process checks prohibited by that guard, and an
+unavailable Modal dependency. The installed contracts retain the latter three.
+Warnings are the inherited Starlette/httpx, AnyIO, and Authlib deprecations.
+
+No final-source Blender render, Qt/GUI presentation, SSH/Slurm allocation,
+Apptainer execution, Modal call, OAuth flow, deployment, remote Codex/ChatGPT
+conversation, publication, or paid execution ran in this checkpoint. Earlier C3
+and lab commits retain their separately recorded real local/Slurm/lab evidence,
+but it is not relabeled as execution of this integrated source. Therefore this
+closes Milestone D implementation and installed contract packaging, not the live
+cross-backend/installed-host acceptance and release gates assigned to the next
+promotion checkpoint. No publisher-directory approval is claimed.
+
 ## D2 final independent-review corrections — 2026-09-12
 
 The follow-up review found four remaining MAJOR defects: a restricted STDIO

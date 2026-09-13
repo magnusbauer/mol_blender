@@ -16,6 +16,7 @@ import sys
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
+PACKAGING_INPUTS = ('blender_render_plugin', 'plugins/blender-render')
 CONTRACTS = ['test_execution_envelope.py', 'test_gateway_recovery.py', 'test_hpc_negotiation.py',
              'test_hpc_lifecycle.py', 'test_runtime_contracts.py', 'test_worker_http.py',
              'test_operation_lifecycle.py', 'test_result_recovery.py', 'test_jobs_api.py',
@@ -28,7 +29,8 @@ CONTRACTS = ['test_execution_envelope.py', 'test_gateway_recovery.py', 'test_hpc
              'test_selection.py', 'test_spec.py', 'test_reference_presets.py', 'test_style_schema.py',
              'test_developer.py', 'test_developer_policy.py',
              'test_mcp_contracts.py', 'test_d2_consumer.py', 'test_d2_review.py', 'test_d2_corrections.py',
-             'test_d2_final_review.py']
+             'test_d2_final_review.py', 'test_d3_pymol_interactive.py',
+             'test_pymol_adapter.py', 'test_lab_network.py']
 
 
 def run(command, cwd, env, log, *, separate_stderr=False):
@@ -62,6 +64,10 @@ def main():
             shutil.copytree(ROOT/name, staging/name)
         else:
             shutil.copy2(ROOT/name, staging/name)
+    # The deterministic plugin-route packager is a wheel input but deliberately
+    # remains outside the renderer/worker engine identity.
+    for name in PACKAGING_INPUTS:
+        shutil.copytree(ROOT/name, staging/name)
     # Stage only package source/resources, never ignored render caches or SIFs.
     inventory_api['stage_package'](ROOT/'blender_render', staging/'blender_render')
     run([sys.executable, '-m', 'build', '--wheel', '--no-isolation', '--outdir', str(out/'wheels')],
@@ -72,7 +78,8 @@ def main():
         out, env, out/'install.log')
     shutil.copytree(ROOT/'tests', out/'tests', ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
     (out/'scripts').mkdir()
-    shutil.copy2(ROOT/'scripts/validate_c3_acceptance.py', out/'scripts/validate_c3_acceptance.py')
+    for name in ('validate_c3_acceptance.py', 'lab_network_proxy.py'):
+        shutil.copy2(ROOT/'scripts'/name, out/'scripts'/name)
     env['PYTHONPATH'] = os.pathsep.join([str(site), str(out/'tests')])
     env['C3_INSTALLED_SITE'] = str(site)
     run([*pytest, *(str(out/'tests'/name) for name in CONTRACTS)], out, env, out/'installed.log')

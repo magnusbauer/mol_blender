@@ -277,7 +277,11 @@ def main() -> None:
                  output / "docs" / "plugin-installation.md")
     installed_scripts = output / "scripts"
     installed_scripts.mkdir()
-    for name in ("validate_c3_acceptance.py", "validate_d4_installation.py"):
+    for name in (
+        "validate_c3_acceptance.py",
+        "validate_d4_installation.py",
+        "lab_network_proxy.py",
+    ):
         shutil.copy2(ROOT / "scripts" / name, installed_scripts / name)
 
     installed_environment = {
