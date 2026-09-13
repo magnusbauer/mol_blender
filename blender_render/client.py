@@ -170,13 +170,20 @@ class Client:
             float(deadline) if deadline is not None else float("inf"),
         )
         previous = None
-        original_timeout = self.timeout
+        # Small injected compatibility clients in the established contract
+        # suite override ``request`` and intentionally bypass ``Client.__init__``.
+        # Bound real clients while retaining that transport-free test adapter.
+        had_timeout = hasattr(self, "timeout")
+        original_timeout = getattr(self, "timeout", 30)
         while time.monotonic() < deadline:
             self.timeout = min(original_timeout, max(0.001, deadline - time.monotonic()))
             try:
                 state = self.status(job_id)
             finally:
-                self.timeout = original_timeout
+                if had_timeout:
+                    self.timeout = original_timeout
+                else:
+                    self.__dict__.pop("timeout", None)
             if state.get('condition') in {'restart_required', 'compatibility_blocked',
                                          'execution_unknown', 'recovery_required'}:
                 raise ClientError(state.get('error') or 'Render operation requires intervention',

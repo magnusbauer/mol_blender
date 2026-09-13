@@ -1,0 +1,13 @@
+{
+  "adapter_type": "registered-http",
+  "expected_compute": "owner-private-beta-service",
+  "format_version": 2,
+  "input_location": "remote-client-upload",
+  "input_source": "declared-attachment",
+  "private_input": false,
+  "registered_connection": true,
+  "route": "hosted",
+  "service_scope": "owner-private-beta",
+  "shared_fallback": false,
+  "transport": "streamable-http"
+}

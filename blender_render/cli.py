@@ -91,6 +91,22 @@ def parser():
     gateway.add_argument("--job-timeout", type=int, default=1800)
     mcp = commands.add_parser("mcp", help="Serve Codex MCP tools over stdio")
     mcp.add_argument("--profile", default="local")
+    plugin = commands.add_parser("plugin", help="Build one installable hosted or private plugin route")
+    plugin.add_argument("action", choices=["package", "marketplace"])
+    plugin.add_argument("output", type=Path, help="New plugin directory or marketplace root")
+    plugin.add_argument("--name", help="Plugin ID for a generated marketplace")
+    plugin.add_argument("--marketplace-name", help="Marketplace ID; defaults to the plugin ID")
+    plugin.add_argument("--route", choices=["hosted", "private-stdio", "private-http"], required=True)
+    plugin.add_argument("--profile", help="Explicit local, Apptainer, HPC, or private profile; required for STDIO")
+    plugin.add_argument("--executable", help="Literal absolute blender-render executable required for STDIO")
+    plugin.add_argument("--url", help="Explicit private MCP URL ending in /mcp")
+    plugin.add_argument("--app-id", help="Optional registered ChatGPT connection for private HTTP")
+    plugin.add_argument("--bearer-token-env-var",
+                        help="Environment variable holding a private HTTP bearer token")
+    plugin.add_argument("--deployment-identity",
+                        help="Non-secret identity label; required for personal Modal URLs")
+    plugin.add_argument("--force", action="store_true",
+                        help="Refresh an unchanged route/name/app topology and preserve other files")
     profile = commands.add_parser("profile")
     profile.add_argument("action", choices=["list", "add"])
     profile.add_argument("name", nargs="?")
@@ -216,6 +232,25 @@ def execute(args):
         from .mcp_server import create_stdio
         create_stdio(args.profile).run(transport="stdio", show_banner=False)
         return
+    if args.command == "plugin":
+        from blender_render_plugin import package_marketplace, package_plugin
+        selected_profile = args.profile or "local"
+        needs_config = (args.route == "private-stdio"
+                        and selected_profile not in {"local", "apptainer"})
+        options = {"profile": args.profile, "executable": args.executable,
+                   "url": args.url, "app_id": args.app_id,
+                   "bearer_token_env_var": args.bearer_token_env_var,
+                   "deployment_identity": args.deployment_identity,
+                   "config": load_config() if needs_config else {},
+                   "force": args.force}
+        if args.action == "marketplace":
+            if not args.name:
+                raise ValueError("plugin marketplace requires --name")
+            return package_marketplace(args.output, args.route, plugin_name=args.name,
+                                       marketplace_name=args.marketplace_name, **options)
+        if args.name or args.marketplace_name:
+            raise ValueError("--name and --marketplace-name apply only to plugin marketplace")
+        return package_plugin(args.output, args.route, **options)
     if args.command == "deploy":
         from .deployment import deploy
         return deploy(development=args.development, staging_user=args.staging_user, personal=args.personal,

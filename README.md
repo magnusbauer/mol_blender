@@ -38,6 +38,7 @@ Presets preserve your saved pose by default. Use `--no-preserve-view` (PyMOL: `p
 - [Mac installation and PyMOL](docs/mac.md)
 - [SLURM, Apptainer, and a lab HTTPS gateway](docs/hpc.md)
 - [Codex and ChatGPT plugin installation](docs/plugin.md)
+- [Private plugin routing and marketplace packages](docs/plugin-installation.md)
 - [Modal deployment and budget operation](docs/modal.md)
 - [Troubleshooting](docs/troubleshooting.md)
 
@@ -81,7 +82,7 @@ python3.11 -m venv .venv
 .venv/bin/python -m build
 ```
 
-`blender_render` is the only implementation package. `bridge_runner`, `render_server`, and the PyMOL script remain compatibility entry points. The preset JSON schema and packaged runtime lock are shared by all backends. See [architecture](docs/architecture.md) and [release validation](docs/release-validation.md).
+`blender_render` remains the only rendering implementation package. The separate `blender_render_plugin` package contains only the reviewed install templates and deterministic route packager. `bridge_runner`, `render_server`, and the PyMOL script remain compatibility entry points. The preset JSON schema and packaged runtime lock are shared by all backends. See [architecture](docs/architecture.md) and [release validation](docs/release-validation.md).
 
 The examples use public PDB structures; accession, source URL, and SHA256 are recorded in `examples/structures.json` and `examples/presets/gallery.json`.
 

@@ -17,6 +17,12 @@ In ChatGPT developer settings, add the same HTTPS MCP endpoint using OAuth. The 
 
 ## Your Mac or HPC from Codex
 
+For an isolated install with no dependency on the owner's registered hosted
+connection, generate a single-route plugin or complete local marketplace using
+[plugin installation and private routing](plugin-installation.md). The generator
+copies the same reviewed skill/assets, binds one local/private route, records
+`shared_fallback=false`, and omits hosted app wiring.
+
 Install the wheel's `mcp` extra and configure the desired compute profile. Add the stdio adapter:
 
 ```sh
@@ -77,4 +83,4 @@ Compatibility submission obeys the same server-owned selection policy. D2 accept
 only bounded canonical transport descriptors; see the contract for vocabularies,
 durable metadata validation and compact actionable status fields.
 
-For ChatGPT with private compute, use your lab's authenticated HTTPS gateway as described in [HPC setup](hpc.md). ChatGPT cannot call a laptop's loopback stdio service directly.
+For ChatGPT with private compute, use your lab's authenticated HTTPS gateway as described in [HPC setup](hpc.md), then package that exact private URL and its separately registered connection as described in [plugin installation and private routing](plugin-installation.md). ChatGPT cannot call a laptop's loopback stdio service directly.

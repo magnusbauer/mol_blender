@@ -25,10 +25,10 @@ render_server = "blender_render.render_server:main"
 blender-render = "blender_render.cli:main"
 
 [tool.setuptools]
-packages = ["blender_render"]
+packages = ["blender_render", "blender_render_plugin"]
 
 [tool.setuptools.package-data]
-blender_render = ["*.json", "*.def", "*.sh", "*.txt", "*.html"]
+blender_render = ["*.json", "*.def", "*.sh", "*.txt", "*.html", "*.md"]
 
 [project.urls]
 Homepage = "https://github.com/magnusbauer/blender_render"
