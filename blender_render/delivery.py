@@ -27,12 +27,39 @@ def _atomic(path, data):
         temporary.unlink(missing_ok=True)
 
 
-def recover_result(client, job_id, output):
+def _bound_request_timeout(client, deadline, job_id):
+    if deadline is None:
+        return
+    remaining = float(deadline) - time.monotonic()
+    if remaining <= 0:
+        from .client import ClientError
+        raise ClientError(
+            'Result recovery deadline expired; reconnect with result and do not resubmit.',
+            408,
+            'operation_timeout',
+            job_id=job_id,
+            next_action='render_result',
+        )
+    if hasattr(client, 'timeout'):
+        client.timeout = min(float(client.timeout), remaining)
+
+
+def recover_result(client, job_id, output, *, deadline=None):
+    from .client import ClientError
     from .runtime import file_lock
     scope = hashlib.sha256((client.url + '\0' + client.token + '\0' + job_id).encode()).hexdigest()
     receipt_path = config_root() / 'result-receipts' / (scope + '.json')
-    with file_lock(receipt_path.with_suffix('.lock')):
-        return _recover(client, job_id, output, receipt_path)
+    try:
+        with file_lock(receipt_path.with_suffix('.lock'), deadline=deadline):
+            return _recover(client, job_id, output, receipt_path, deadline=deadline)
+    except TimeoutError:
+        raise ClientError(
+            'Result recovery deadline expired; reconnect with result and do not resubmit.',
+            408,
+            'operation_timeout',
+            job_id=job_id,
+            next_action='render_result',
+        ) from None
 
 
 def _inventory_identity(items):
@@ -52,7 +79,7 @@ def _inventory_identity(items):
 
 
 def _recover(client, job_id, output, receipt_path, *, before_ack=None, strict_ack=False, expected_execution=None,
-             on_child_timings=None, attempt=1, before_action=None):
+             on_child_timings=None, attempt=1, before_action=None, deadline=None):
     from .client import ClientError
     started = time.monotonic()
     output = Path(output).expanduser().resolve()
@@ -77,6 +104,7 @@ def _recover(client, job_id, output, receipt_path, *, before_ack=None, strict_ac
     manifest = {}
     timings = []
     try:
+        _bound_request_timeout(client, deadline, job_id)
         if before_action: before_action()
         result = client.request('GET', base + '/result?inventory=true')
         if result.get('delivery_policy') != 'explicit_ack_v1':
@@ -109,7 +137,16 @@ def _recover(client, job_id, output, receipt_path, *, before_ack=None, strict_ac
         timings = sanitize(result.get('timings', []))
         if on_child_timings is not None:
             receipt['timing_integrity_conflict'] = on_child_timings(timings)
-    except (ClientError, OSError):
+    except ClientError as exc:
+        if exc.code == 'operation_timeout':
+            raise
+        if not receipt['artifacts']:
+            raise
+        # Offline recovery still requires an earlier complete inventory and
+        # independently verified local bytes. Never infer a shrinking inventory.
+        for item in receipt['artifacts']:
+            item['availability'] = 'unknown'
+    except OSError:
         if not receipt['artifacts']:
             raise
         # Offline recovery still requires an earlier complete inventory and
@@ -129,6 +166,7 @@ def _recover(client, job_id, output, receipt_path, *, before_ack=None, strict_ac
     _atomic(receipt_path, json.dumps(receipt).encode())
     paths, errors = {}, {}
     for item in receipt['artifacts']:
+        _bound_request_timeout(client, deadline, job_id)
         name, path = item['name'], destinations[item['name']]
         item['verified_locally'] = False
         item['checksum_failure'] = False
@@ -148,6 +186,7 @@ def _recover(client, job_id, output, receipt_path, *, before_ack=None, strict_ac
             if not verified:
                 if item.get('availability') != 'available' or item.get('sha256') is None or item.get('size') is None:
                     raise ClientError('artifact_unavailable: expected artifact has no verified local copy and is unavailable remotely')
+                _bound_request_timeout(client, deadline, job_id)
                 if before_action: before_action()
                 raw = client.request('GET', base + '/artifacts/' + name + '?delivery=ack', binary=True)
                 if len(raw) != item['size'] or hashlib.sha256(raw).hexdigest() != item['sha256']:
@@ -162,13 +201,18 @@ def _recover(client, job_id, output, receipt_path, *, before_ack=None, strict_ac
             if before_ack:
                 before_ack()
             try:
+                _bound_request_timeout(client, deadline, job_id)
                 if before_action: before_action()
                 client.request('POST', base + '/artifacts/' + name + '/ack', {'sha256': item['sha256']})
             except (ClientError, OSError) as exc:
                 # Output is safe locally; server retains it until ack or TTL.
                 if strict_ack:
                     errors[name] = 'Artifact acknowledgement pending'
-        except (ClientError, OSError) as exc:
+        except ClientError as exc:
+            if exc.code == 'operation_timeout':
+                raise
+            errors[name] = str(exc)
+        except OSError as exc:
             errors[name] = str(exc)
     _atomic(receipt_path, json.dumps(receipt).encode())
     if 'manifest.json' in paths:

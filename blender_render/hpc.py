@@ -64,7 +64,10 @@ def connect(name, profile, *, intention=None, attach_only=None, timeout=600, **i
     validate_profile(profile)
     if intention == ConnectionIntention.INSPECT_CACHED:
         return existing_connection(name)
-    attach_only = intention == ConnectionIntention.ATTACH_EXISTING
+    attach_only = intention in {
+        ConnectionIntention.ATTACH_EXISTING,
+        ConnectionIntention.SUBMIT_EXISTING,
+    }
     if not re.fullmatch(r"[A-Za-z0-9_.-]+", name):
         raise ValueError("Invalid profile name")
     root = config_root() / "hpc" / name
@@ -81,7 +84,7 @@ def connect(name, profile, *, intention=None, attach_only=None, timeout=600, **i
         require_compatible(expected, declaration.get('engine'), [])
     def negotiate(health):
         from .engine import require_retrieval
-        if attach_only:
+        if intention == ConnectionIntention.ATTACH_EXISTING:
             require_retrieval(health)
         else:
             require_compatible(expected, health.get('controller_declaration'), [])

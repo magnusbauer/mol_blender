@@ -1,7 +1,9 @@
 """Local service lifecycle and verified runtime discovery."""
 from __future__ import annotations
 
+import errno
 import fcntl
+import math
 import json
 import os
 import secrets
@@ -16,11 +18,28 @@ from .config import VERSION, config_root, load_config, save_config
 
 
 @contextmanager
-def file_lock(path, *, blocking=True):
+def file_lock(path, *, blocking=True, deadline=None):
+    """Lock a private file, optionally bounded by an absolute monotonic deadline."""
     path = Path(path)
     path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     with path.open("a") as handle:
-        fcntl.flock(handle, fcntl.LOCK_EX | (0 if blocking else fcntl.LOCK_NB))
+        if deadline is None or not blocking:
+            fcntl.flock(handle, fcntl.LOCK_EX | (0 if blocking else fcntl.LOCK_NB))
+        else:
+            deadline = float(deadline)
+            if not math.isfinite(deadline):
+                raise ValueError("file lock deadline must be finite")
+            while True:
+                try:
+                    fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except OSError as exc:
+                    if exc.errno not in {errno.EACCES, errno.EAGAIN}:
+                        raise
+                    remaining = float(deadline) - time.monotonic()
+                    if remaining <= 0:
+                        raise TimeoutError(f"Timed out waiting for file lock: {path}") from None
+                    time.sleep(min(0.05, remaining))
         try:
             yield
         finally:

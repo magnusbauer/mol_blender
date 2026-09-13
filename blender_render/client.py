@@ -20,6 +20,20 @@ class ClientError(RuntimeError):
         self.status, self.code = status, code
 
 
+class IncompleteResultError(ClientError):
+    """A render produced verified outputs but its required set is incomplete."""
+
+    def __init__(self, result):
+        self.result = result
+        super().__init__(
+            "Required render artifacts are incomplete; verified partial outputs were retained.",
+            410,
+            result.get("error_code") or "artifact_unavailable",
+            job_id=result.get("job_id"),
+            next_action=result.get("next_action"),
+        )
+
+
 class NoRedirect(HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         raise ClientError("Unexpected redirect from render service; check the configured endpoint.")
@@ -150,10 +164,19 @@ class Client:
     def delete_result(self, job_id):
         return self.request("DELETE", "/v1/jobs/" + job_id + "/result")
 
-    def wait(self, job_id, timeout=1800, progress=None):
-        deadline, previous = time.monotonic() + timeout, None
+    def wait(self, job_id, timeout=1800, progress=None, *, deadline=None):
+        deadline = min(
+            time.monotonic() + timeout,
+            float(deadline) if deadline is not None else float("inf"),
+        )
+        previous = None
+        original_timeout = self.timeout
         while time.monotonic() < deadline:
-            state = self.status(job_id)
+            self.timeout = min(original_timeout, max(0.001, deadline - time.monotonic()))
+            try:
+                state = self.status(job_id)
+            finally:
+                self.timeout = original_timeout
             if state.get('condition') in {'restart_required', 'compatibility_blocked',
                                          'execution_unknown', 'recovery_required'}:
                 raise ClientError(state.get('error') or 'Render operation requires intervention',
@@ -169,12 +192,12 @@ class Client:
                 raise ClientError('Child execution retained; recover this operation with recover-transfer', 409, 'transfer_pending')
             if state["status"] in {"failed", "cancelled", "expired", "delivered", "deleted"}:
                 raise ClientError(state.get("error") or "Render " + state["status"])
-            time.sleep(.5)
+            time.sleep(min(.5, max(0.0, deadline - time.monotonic())))
         raise ClientError(f"Render {job_id} is still pending. Reconnect with status/result; do not resubmit.")
 
-    def download(self, job_id, output):
+    def download(self, job_id, output, *, deadline=None):
         from .delivery import recover_result
-        return recover_result(self, job_id, output)
+        return recover_result(self, job_id, output, deadline=deadline)
 
     def recover_transfer(self, job_id):
         return self.request('POST', '/v1/jobs/' + quote(job_id, safe='') + '/recover-transfer')
@@ -186,6 +209,7 @@ from enum import Enum
 class ConnectionIntention(str, Enum):
     INSPECT_CACHED = 'inspect_cached'
     ATTACH_EXISTING = 'attach_existing'
+    SUBMIT_EXISTING = 'submit_existing'
     START_OR_ALLOCATE = 'start_or_allocate'
 
 
@@ -220,17 +244,37 @@ class ConfiguredClient(Client):
         intention = self.intention or (ConnectionIntention.START_OR_ALLOCATE if start else ConnectionIntention.INSPECT_CACHED)
         if not start and intention == ConnectionIntention.START_OR_ALLOCATE:
             intention = ConnectionIntention.INSPECT_CACHED
-        if start and intention != ConnectionIntention.START_OR_ALLOCATE:
+        if start and intention not in {
+            ConnectionIntention.START_OR_ALLOCATE,
+            ConnectionIntention.SUBMIT_EXISTING,
+        }:
             raise ClientError('Connection intention prohibits new execution submission')
         connection = _connect_client(self.profile, intention=intention, **self.options)
         return connection.request(method, path, body, **kwargs)
 
-    def download(self, job_id, output):
+    def download(self, job_id, output, *, deadline=None):
         # Resolve credentials without startup, then scope receipts to this
         # concrete service and credential. No upload/submit fallback exists.
         intention = (ConnectionIntention.ATTACH_EXISTING if self.intention == ConnectionIntention.ATTACH_EXISTING
                      else ConnectionIntention.INSPECT_CACHED)
-        return _connect_client(self.profile, intention=intention, **self.options).download(job_id, output)
+        return _connect_client(self.profile, intention=intention, **self.options).download(
+            job_id, output, deadline=deadline
+        )
+
+    def wait(self, job_id, timeout=1800, progress=None, *, deadline=None):
+        intention = (
+            ConnectionIntention.ATTACH_EXISTING
+            if self.intention in {
+                ConnectionIntention.ATTACH_EXISTING,
+                ConnectionIntention.SUBMIT_EXISTING,
+            }
+            else ConnectionIntention.INSPECT_CACHED
+        )
+        options = dict(self.options)
+        options["timeout"] = min(float(options.get("timeout", timeout)), float(timeout))
+        return _connect_client(self.profile, intention=intention, **options).wait(
+            job_id, timeout, progress, deadline=deadline
+        )
 
     def render_consumer_file(self, path, request):
         from . import consumer
@@ -250,7 +294,10 @@ class ConfiguredClient(Client):
         if not consumer.executable(decision):
             return consumer.non_admission(decision, self.profile)
         intention = self.intention or ConnectionIntention.START_OR_ALLOCATE
-        if intention != ConnectionIntention.START_OR_ALLOCATE:
+        if intention not in {
+            ConnectionIntention.START_OR_ALLOCATE,
+            ConnectionIntention.SUBMIT_EXISTING,
+        }:
             raise ClientError('Connection intention prohibits new execution submission')
         # Local/HPC profiles use the existing outer admission controller. The
         # selected backend is still reached only after its durable queue claim.
@@ -270,13 +317,14 @@ def start_service(profile='local', **kwargs):
 
 def _connect_client(profile="local", *, read_only=None, admission=False, intention=None, attach_only=None, **kwargs):
     kwargs.pop('consumer_trusted', None)  # Adapter schema configuration, never worker configuration.
+    request_timeout = kwargs.get('timeout')
     intention = connection_intention(intention, read_only=read_only, attach_only=attach_only) or ConnectionIntention.START_OR_ALLOCATE
-    read_only = intention != ConnectionIntention.START_OR_ALLOCATE
+    existing_only = intention != ConnectionIntention.START_OR_ALLOCATE
     controller_owner = kwargs.pop('controller_owner', None)
     from .config import load_config
     if profile in {"local", "apptainer"}:
         from .runtime import ensure_local, existing_local
-        connection = existing_local() if read_only else ensure_local(**kwargs)
+        connection = existing_local() if existing_only else ensure_local(**kwargs)
     else:
         config = load_config()
         if profile not in config.get("profiles", {}):
@@ -289,7 +337,7 @@ def _connect_client(profile="local", *, read_only=None, admission=False, intenti
                 # CLI operations belong to this durable outer queue. Only its
                 # gateway backend may connect/allocate, after admission.
                 from .runtime import ensure_local, existing_local
-                connection = (existing_local(worker_profile=profile) if read_only
+                connection = (existing_local(worker_profile=profile) if existing_only
                               else ensure_local(worker_profile=profile, **kwargs))
             else:
                 from .hpc import connect, existing_connection
@@ -297,16 +345,28 @@ def _connect_client(profile="local", *, read_only=None, admission=False, intenti
                               else connect(profile, connection, intention=intention, **kwargs))
     if connection.get("auth") == "oauth" and controller_owner is None:
         from .oauth_client import access_token
-        return Client(connection["url"], access_token(connection["url"]), timeout=120)
+        return Client(
+            connection["url"],
+            access_token(connection["url"]),
+            timeout=float(request_timeout) if request_timeout is not None else 120,
+        )
     if controller_owner is not None:
         path = connection.get('controller_token_file')
         token = Path(path).expanduser().read_text().strip() if path else os.environ.get(connection.get('controller_token_env', ''), '')
         if len(token) < 32:
             raise ClientError('Separate controller credentials required for resolved execution; explicit configuration required')
-        client = Client(connection['url'], token)
+        client = Client(
+            connection['url'],
+            token,
+            timeout=float(request_timeout) if request_timeout is not None else 30,
+        )
         client.controller_owner = controller_owner
         return client
     token = os.environ.get(connection.get("token_env", "BLENDER_RENDER_TOKEN"), "")
     if connection.get("token_file"):
         token = Path(connection["token_file"]).expanduser().read_text().strip()
-    return Client(connection["url"], token)
+    return Client(
+        connection["url"],
+        token,
+        timeout=float(request_timeout) if request_timeout is not None else 30,
+    )
