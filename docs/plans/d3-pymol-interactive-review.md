@@ -14,7 +14,7 @@ base commit `5be0e72d86a26386ed8faa68b788aae3dd90863a`.
 
 ## Scope and repository state
 
-- Worktree: `/net/scratch/magnusb/git/blender_bridge-d3`
+- Worktree: isolated D3 review checkout (machine-local path omitted)
 - Branch: `codex/d3-pymol-interactive`
 - Base and current HEAD: `5be0e72d86a26386ed8faa68b788aae3dd90863a`
 - Index/commit/push: none; all D3 work remains uncommitted and unpushed

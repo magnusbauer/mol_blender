@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 from pathlib import Path, PurePosixPath
+import re
 import shutil
 import subprocess
 import sys
@@ -43,6 +44,7 @@ ENGINE_EXCLUDED_DIRS = {
     "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", "render_outputs",
 }
 ENGINE_EXCLUDED_SUFFIXES = {".pyc", ".pyo", ".tmp", ".log", ".sif"}
+SOURCE_PATHS = (*ENGINE_BUILD_INPUTS, *D4_BUILD_INPUTS, "blender_render")
 
 
 def _sha256(path: Path) -> str:
@@ -63,6 +65,48 @@ def _tree_inventory(root: Path) -> dict[str, str]:
         elif not path.is_dir():
             raise ValueError("Validation inputs must be regular files")
     return dict(sorted(result.items()))
+
+
+def _inventory_digest(inventory: dict[str, str]) -> str:
+    encoded = json.dumps(
+        inventory, sort_keys=True, separators=(",", ":")
+    ).encode()
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _validate_source_identity(commit: str, status: str) -> dict[str, object]:
+    commit = commit.strip().lower()
+    if len(commit) != 40 or any(
+        character not in "0123456789abcdef" for character in commit
+    ):
+        raise ValueError("D4 validation requires a full Git source commit")
+    dirty = [line[3:] for line in status.splitlines() if len(line) >= 4]
+    if dirty:
+        raise ValueError(
+            "D4 build inputs must be clean; first changed path: " + dirty[0]
+        )
+    return {"git_commit": commit, "build_inputs_clean": True}
+
+
+def _source_identity(root: Path) -> dict[str, object]:
+    commit = subprocess.run(
+        ["git", "-C", str(root), "rev-parse", "HEAD"],
+        check=True,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    ).stdout
+    status = subprocess.run(
+        [
+            "git", "-C", str(root), "status", "--porcelain=v1",
+            "--untracked-files=all", "--", *SOURCE_PATHS,
+        ],
+        check=True,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    ).stdout
+    return _validate_source_identity(commit, status)
 
 
 def _engine_inventory(root: Path) -> dict[str, str]:
@@ -210,6 +254,72 @@ def _scan_needles(roots: dict[str, Path], needles: tuple[bytes, ...]) -> list[st
     return matches
 
 
+def _scan_personal_paths(roots: dict[str, Path]) -> list[str]:
+    """Find machine-specific home/scratch paths without embedding one here."""
+    slash = rb"/"
+    account = rb"[A-Za-z0-9][A-Za-z0-9._-]*"
+    boundary = rb"(?:/|\\|\b)"
+    windows_separator = rb"[\\/]"
+    patterns = (
+        (
+            "unix_home",
+            re.compile(
+                slash
+                + rb"(?:home|var/home|export/home)"
+                + slash
+                + account
+                + boundary
+            ),
+        ),
+        (
+            "mac_home",
+            re.compile(slash + rb"Users" + slash + account + boundary),
+        ),
+        (
+            "network_scratch",
+            re.compile(
+                slash
+                + rb"(?:(?:net|mnt|gpfs|lustre)"
+                + slash
+                + rb")?scratch"
+                + slash
+                + account
+                + boundary
+            ),
+        ),
+        (
+            "windows_home",
+            re.compile(
+                rb"[A-Za-z]:"
+                + windows_separator
+                + rb"Users"
+                + windows_separator
+                + account
+                + rb"(?:"
+                + windows_separator
+                + rb"|\b)",
+                re.IGNORECASE,
+            ),
+        ),
+    )
+    matches = []
+    for label, root in roots.items():
+        resolved = root.resolve()
+        for path in sorted(resolved.rglob("*")):
+            relative = path.relative_to(resolved)
+            if path.is_symlink():
+                raise ValueError("Privacy scan inputs cannot contain symlinks")
+            if path.is_dir():
+                continue
+            if not path.is_file() or not path.resolve().is_relative_to(resolved):
+                raise ValueError("Privacy scan inputs must be regular contained files")
+            data = path.read_bytes()
+            for category, pattern in patterns:
+                if pattern.search(data):
+                    matches.append(f"{label}/{relative.as_posix()}:{category}")
+    return matches
+
+
 def _validator_paths(plugin_validator: Path | None,
                      skill_validator: Path | None) -> tuple[Path, Path]:
     system_skills = Path(os.environ.get(
@@ -227,6 +337,7 @@ def main() -> None:
     parser.add_argument("--plugin-validator", type=Path)
     parser.add_argument("--skill-validator", type=Path)
     args = parser.parse_args()
+    source_identity = _source_identity(ROOT)
     output = args.output.resolve()
     if output.is_relative_to(ROOT):
         raise ValueError("D4 validation output must be outside the checkout")
@@ -246,6 +357,19 @@ def main() -> None:
     source_engine_inventory = _engine_inventory(ROOT / "blender_render")
     _copy_inventory(ROOT / "blender_render", staging / "blender_render",
                     source_engine_inventory)
+    staged_source_inventory = _tree_inventory(staging)
+    reviewed_input_inventory = {}
+    for name, digest in staged_source_inventory.items():
+        source = ROOT / name
+        if not source.is_file() or _sha256(source) != digest:
+            raise ValueError("Reviewed source changed while validation inputs were staged")
+        reviewed_input_inventory[name] = digest
+    (output / "reviewed-source-inventory.json").write_text(
+        json.dumps(reviewed_input_inventory, indent=2, sort_keys=True) + "\n"
+    )
+    (output / "staged-source-inventory.json").write_text(
+        json.dumps(staged_source_inventory, indent=2, sort_keys=True) + "\n"
+    )
 
     build_output = output / "distribution"
     _run([sys.executable, "-m", "build", "--sdist", "--wheel", "--no-isolation",
@@ -428,9 +552,14 @@ def main() -> None:
         b"almostscheidplatz", b"magnus bauer", b"magnusbauer",
         b"account-restricted private beta", b"project credit ceiling",
     )
+    distribution_roots = {
+        "staged-source": staging,
+        "source-distribution": sdist_root,
+        "direct-wheel": extraction,
+        "sdist-wheel": sdist_extraction,
+        "installed-target": site,
+    }
     package_form_roots = {
-        "source-renderer": ROOT / "blender_render",
-        "source-packager": ROOT / "blender_render_plugin",
         "staging-renderer": staging / "blender_render",
         "staging-packager": staging / "blender_render_plugin",
         "sdist-renderer": sdist_root / "blender_render",
@@ -449,8 +578,7 @@ def main() -> None:
             (b"user:secret@", b"token=secret", b"secret-from-environment",
              b"do-not-read-or-copy"),
         ),
-        "packaged_personal_path_matches": _scan_needles(
-            package_form_roots, (b"/net/scratch/magnusb", b"/home/magnusb")),
+        "packaged_personal_path_matches": _scan_personal_paths(distribution_roots),
         "generated_variant_leaks_in_package_forms": _scan_needles(
             package_form_roots,
             (b"render.example.edu", b"BLENDER_RENDER_PRIVATE_TOKEN",
@@ -500,6 +628,15 @@ def main() -> None:
             }
 
     evidence = {
+        "source": {
+            **source_identity,
+            "reviewed_input_inventory": "reviewed-source-inventory.json",
+            "reviewed_input_files": len(reviewed_input_inventory),
+            "reviewed_input_sha256": _inventory_digest(reviewed_input_inventory),
+            "staged_source_inventory": "staged-source-inventory.json",
+            "staged_source_files": len(staged_source_inventory),
+            "staged_source_sha256": _inventory_digest(staged_source_inventory),
+        },
         "wheel": wheel.name,
         "wheel_sha256": _sha256(wheel),
         "source_distribution": sdist.name,
@@ -526,6 +663,10 @@ def main() -> None:
         ).encode()).hexdigest(),
         "generated_variants": generated_variants,
         "privacy_scans": privacy_scans,
+        "privacy_scan_files": {
+            label: len(_tree_inventory(root))
+            for label, root in distribution_roots.items()
+        },
         "boundary_attempts": boundary_attempts,
         "boundary_guard_self_test": {
             "blocked": True,

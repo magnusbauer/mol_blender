@@ -6,12 +6,14 @@ import json
 import os
 from pathlib import Path
 import runpy
+import shutil
 import subprocess
 import sys
 
 import pytest
 
 from blender_render import cli
+import blender_render_plugin.package as package_module
 from blender_render_plugin import (
     package_marketplace,
     package_plugin,
@@ -685,6 +687,142 @@ def test_force_returns_final_plugin_inventory_with_preserved_extras(tmp_path):
     assert "operator-notes.txt" in result["files"]
 
 
+@pytest.mark.parametrize(
+    "stage",
+    ["backup", "install"],
+)
+@pytest.mark.parametrize("interruption_type", [KeyboardInterrupt, SystemExit])
+def test_force_interruption_restores_previous_package_and_operator_files(
+    tmp_path, monkeypatch, stage, interruption_type
+):
+    interruption = interruption_type("stop during publication")
+    target = tmp_path / "blender-render-private"
+    package_plugin(
+        target,
+        "private-stdio",
+        profile="local",
+        executable="/opt/bin/blender-render-v1",
+    )
+    (target / "operator-notes.txt").write_text("must survive interruption\n")
+    before = tree_bytes(target)
+    transaction = package_module._publish_transaction(target)
+    real_replace = Path.replace
+
+    def interrupted(source, destination):
+        destination = Path(destination)
+        if stage == "backup" and source == target and destination == transaction / target.name:
+            result = real_replace(source, destination)
+            raise interruption
+        if stage == "install" and destination == target and source != transaction / target.name:
+            result = real_replace(source, destination)
+            raise interruption
+        return real_replace(source, destination)
+
+    monkeypatch.setattr(Path, "replace", interrupted)
+    with pytest.raises(type(interruption)):
+        package_plugin(
+            target,
+            "private-stdio",
+            profile="local",
+            executable="/opt/bin/blender-render-v2",
+            force=True,
+        )
+
+    assert tree_bytes(target) == before
+    assert not transaction.exists()
+
+
+def test_next_force_recovers_target_missing_after_interrupted_publication(tmp_path):
+    target = tmp_path / "blender-render-private"
+    package_plugin(
+        target,
+        "private-stdio",
+        profile="local",
+        executable="/opt/bin/blender-render-v1",
+    )
+    (target / "operator-notes.txt").write_text("recover me\n")
+    before = tree_bytes(target)
+    transaction = package_module._publish_transaction(target)
+    transaction.mkdir()
+    target.replace(transaction / target.name)
+
+    with pytest.raises(RuntimeError, match="Recovered.*interrupted"):
+        package_plugin(
+            target,
+            "private-stdio",
+            profile="local",
+            executable="/opt/bin/blender-render-v2",
+            force=True,
+        )
+
+    assert tree_bytes(target) == before
+    assert not transaction.exists()
+
+
+def test_stale_publication_with_target_and_backup_refuses_without_deletion(tmp_path):
+    target = tmp_path / "blender-render-private"
+    package_plugin(
+        target,
+        "private-stdio",
+        profile="local",
+        executable="/opt/bin/blender-render-v1",
+    )
+    before = tree_bytes(target)
+    transaction = package_module._publish_transaction(target)
+    transaction.mkdir()
+    shutil.copytree(target, transaction / target.name)
+
+    with pytest.raises(RuntimeError, match="Both the package and its.*backup"):
+        package_plugin(
+            target,
+            "private-stdio",
+            profile="local",
+            executable="/opt/bin/blender-render-v2",
+            force=True,
+        )
+
+    assert tree_bytes(target) == before
+    assert tree_bytes(transaction / target.name) == before
+
+
+def test_failed_force_rollback_retains_exact_recovery_backup(
+    tmp_path, monkeypatch
+):
+    target = tmp_path / "blender-render-private"
+    package_plugin(
+        target,
+        "private-stdio",
+        profile="local",
+        executable="/opt/bin/blender-render-v1",
+    )
+    (target / "operator-notes.txt").write_text("retain exactly\n")
+    before = tree_bytes(target)
+    transaction = package_module._publish_transaction(target)
+    previous = transaction / target.name
+    real_replace = Path.replace
+
+    def broken_rollback(source, destination):
+        destination = Path(destination)
+        if destination == target and source == previous:
+            raise OSError("injected rollback failure")
+        if destination == target and source != previous:
+            raise KeyboardInterrupt("injected publish interruption")
+        return real_replace(source, destination)
+
+    monkeypatch.setattr(Path, "replace", broken_rollback)
+    with pytest.raises(RuntimeError, match=str(previous)):
+        package_plugin(
+            target,
+            "private-stdio",
+            profile="local",
+            executable="/opt/bin/blender-render-v2",
+            force=True,
+        )
+
+    assert not target.exists()
+    assert tree_bytes(previous) == before
+
+
 def test_force_returns_final_marketplace_inventory_with_preserved_extras(tmp_path):
     target = tmp_path / "private-marketplace"
     package_marketplace(target, "private-http",
@@ -852,7 +990,69 @@ def test_d4_acceptance_declares_guarded_measured_and_sdist_evidence():
     assert '"official_plugin_validation"' in script
     assert '"source_distribution"' in script
     assert '"sdist-wheel"' in script
+    assert '"git_commit"' in script
+    assert '"reviewed_input_inventory"' in script
+    assert '"staged_source_inventory"' in script
+    assert '"privacy_scan_files"' in script
+    assert "_scan_personal_paths(distribution_roots)" in script
+    assert "/net/scratch/" not in script and "/home/" not in script
     assert script.count('"c3_boundary_guard"') >= 2
+
+
+def test_d4_source_identity_rejects_dirty_tracked_or_untracked_inputs():
+    root = Path(__file__).parents[1]
+    namespace = runpy.run_path(str(root / "scripts/validate_d4_installation.py"))
+    validate = namespace["_validate_source_identity"]
+
+    assert validate("a" * 40 + "\n", "") == {
+        "git_commit": "a" * 40,
+        "build_inputs_clean": True,
+    }
+    for status in (" M README.md\n", "?? blender_render/new_module.py\n"):
+        with pytest.raises(ValueError, match="build inputs must be clean"):
+            validate("a" * 40, status)
+
+
+def test_personal_path_scan_covers_every_shape_in_every_distribution_form(
+    tmp_path,
+):
+    root = Path(__file__).parents[1]
+    namespace = runpy.run_path(str(root / "scripts/validate_d4_installation.py"))
+    scan = namespace["_scan_personal_paths"]
+    separator = chr(92)
+    values = {
+        "unix.txt": "/" + "home" + "/alice/project",
+        "mac.txt": "/" + "Users" + "/bob/project",
+        "scratch.txt": "/" + "net" + "/" + "scratch" + "/carol/project",
+        "windows.txt": (
+            "C:" + separator + "Users" + separator + "dave" + separator + "project"
+        ),
+    }
+    roots = {}
+    for form in (
+        "staged-source",
+        "source-distribution",
+        "direct-wheel",
+        "sdist-wheel",
+        "installed-target",
+    ):
+        distribution = tmp_path / form / "unselected" / "metadata"
+        distribution.mkdir(parents=True)
+        roots[form] = tmp_path / form
+        for name, value in values.items():
+            (distribution / name).write_text(value)
+        (distribution / "portable.txt").write_text(
+            "/opt/blender-render and relative/path"
+        )
+
+    matches = scan(roots)
+
+    assert len(matches) == len(roots) * len(values)
+    assert {match.split("/", 1)[0] for match in matches} == set(roots)
+    assert {match.rsplit(":", 1)[1] for match in matches} == {
+        "unix_home", "mac_home", "network_scratch", "windows_home"
+    }
+    assert not any("portable.txt" in match for match in matches)
 
 
 def test_boundary_runner_blocks_the_controlled_process_fixture(tmp_path):

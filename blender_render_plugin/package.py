@@ -819,6 +819,78 @@ def _marketplace_topology(root: Path, plugin_name: str) -> dict[str, object]:
     }
 
 
+def _publish_transaction(target: Path) -> Path:
+    return target.parent / ("." + target.name + ".blender-render-transaction")
+
+
+def _validate_publish_tree(
+    root: Path,
+    kind: str,
+    *,
+    plugin_name: str,
+    marketplace_name: str | None,
+) -> None:
+    if kind == "plugin":
+        validate_package(root, expected_plugin_name=plugin_name)
+    elif kind == "marketplace" and marketplace_name is not None:
+        validate_marketplace(
+            root,
+            expected_plugin_name=plugin_name,
+            expected_marketplace_name=marketplace_name,
+        )
+    else:
+        raise ValueError("Unknown generator ownership kind")
+
+
+def _recover_publish_transaction(
+    target: Path,
+    kind: str,
+    *,
+    plugin_name: str,
+    marketplace_name: str | None,
+) -> None:
+    transaction = _publish_transaction(target)
+    if not transaction.exists() and not transaction.is_symlink():
+        return
+    if transaction.is_symlink() or not transaction.is_dir():
+        raise RuntimeError(
+            "An invalid interrupted publication transaction requires inspection: "
+            + str(transaction)
+        )
+    previous = transaction / target.name
+    if target.exists() or target.is_symlink():
+        if previous.exists() or previous.is_symlink():
+            raise RuntimeError(
+                "Both the package and its interrupted publication backup exist; "
+                "inspect them without deleting either: "
+                + str(transaction)
+            )
+        raise RuntimeError(
+            "The package exists beside an incomplete publication transaction; "
+            "inspect both without deleting either: "
+            + str(transaction)
+        )
+    if previous.is_symlink() or not previous.is_dir():
+        raise RuntimeError(
+            "The interrupted publication backup is incomplete; inspect it at "
+            + str(transaction)
+        )
+    _validate_publish_tree(
+        previous,
+        kind,
+        plugin_name=plugin_name,
+        marketplace_name=marketplace_name,
+    )
+    previous.replace(target)
+    failed = transaction / "failed"
+    if failed.exists() and not failed.is_symlink():
+        shutil.rmtree(failed)
+    transaction.rmdir()
+    raise RuntimeError(
+        "Recovered the package from an interrupted publication; rerun the requested update"
+    )
+
+
 def _publish(
     draft: Path,
     target: Path,
@@ -828,6 +900,12 @@ def _publish(
     plugin_name: str,
     marketplace_name: str | None = None,
 ) -> None:
+    _recover_publish_transaction(
+        target,
+        kind,
+        plugin_name=plugin_name,
+        marketplace_name=marketplace_name,
+    )
     if not target.exists() and not target.is_symlink():
         draft.replace(target)
         return
@@ -907,24 +985,78 @@ def _publish(
             expected_plugin_name=plugin_name,
             expected_marketplace_name=marketplace_name,
         )
-    previous = draft.parent / (target.name + ".previous")
-    failed = draft.parent / (target.name + ".failed")
-    target.replace(previous)
+    transaction = _publish_transaction(target)
+    transaction.mkdir(mode=0o700)
+    previous = transaction / target.name
+    failed = transaction / "failed"
     try:
+        target.replace(previous)
         if _tree_inventory(previous) != existing:
             raise ValueError("Existing output changed while force was committing")
         draft.replace(target)
         updated = _tree_inventory(target)
         if any(updated.get(name) != digest for name, digest in extra_hashes.items()):
             raise ValueError("Force did not preserve non-generator files")
-    except Exception:
-        if target.exists():
-            target.replace(failed)
-        previous.replace(target)
-        if failed.exists():
-            shutil.rmtree(failed)
+    except BaseException:
+        if (
+            not previous.exists()
+            and not previous.is_symlink()
+            and (target.exists() or target.is_symlink())
+        ):
+            try:
+                transaction.rmdir()
+            except BaseException as cleanup:
+                raise RuntimeError(
+                    "Publication stopped before the package swap, but transaction "
+                    "cleanup failed; inspect " + str(transaction)
+                ) from cleanup
+            raise
+        restored = False
+        try:
+            if target.exists() or target.is_symlink():
+                target.replace(failed)
+            if previous.exists() or previous.is_symlink():
+                previous.replace(target)
+            else:
+                raise RuntimeError("The previous package is unavailable")
+            restored = _tree_inventory(target) == existing
+            if not restored:
+                raise RuntimeError("The restored package does not match its backup")
+        except BaseException as rollback:
+            # Path.replace can complete and still be interrupted before returning.
+            # Recognize that exact restored state before declaring rollback failure.
+            if not previous.exists() and not previous.is_symlink():
+                try:
+                    restored = (
+                        target.is_dir()
+                        and not target.is_symlink()
+                        and _tree_inventory(target) == existing
+                    )
+                except BaseException:
+                    restored = False
+            if restored:
+                pass
+            else:
+                raise RuntimeError(
+                    "Publication rollback failed; retain the recovery backup at "
+                    + str(previous)
+                    + " and inspect the transaction at "
+                    + str(transaction)
+                ) from rollback
+        try:
+            # The failed generated tree is disposable only after the prior
+            # package, including operator-owned extras, is verified in place.
+            if failed.exists() and not failed.is_symlink():
+                shutil.rmtree(failed)
+            transaction.rmdir()
+        except BaseException as cleanup:
+            raise RuntimeError(
+                "The previous package was restored, but transaction cleanup failed; inspect "
+                + str(transaction)
+            ) from cleanup
         raise
     shutil.rmtree(previous)
+    transaction.rmdir()
 
 
 def package_plugin(target: Path, route: str, *, profile: str | None = None,
