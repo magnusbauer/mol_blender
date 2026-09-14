@@ -12,7 +12,7 @@ import threading
 import time
 import uuid
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Mapping
 from urllib.parse import urlsplit
@@ -28,6 +28,7 @@ from blender_render.export import _normalize_cli_string, _parse_bool, build_rend
 
 _MAX_TASKS = 64
 _MAX_RESERVATIONS = 256
+_MAX_RESERVATION_TARGETS = 32
 _RESERVATION_VERSION = 2
 _KNOWN_TERMINAL = {"cancelled", "failed", "expired", "deleted"}
 _CANCELLABLE = {"starting", "submitting", "queued", "running", "cancelling"}
@@ -164,6 +165,7 @@ class _RenderTask:
     preselection_decision: dict[str, Any] | None = None
     backend_render_started: bool | None = None
     selection_error: str | None = None
+    destination_recovery_required: bool = False
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
 
@@ -367,7 +369,7 @@ def _read_reservations(path: Path) -> list[dict[str, Any]]:
             or len(scope) != 64
             or any(character not in "0123456789abcdef" for character in scope)
             or not isinstance(targets, list)
-            or not 1 <= len(targets) <= 8
+            or not 1 <= len(targets) <= _MAX_RESERVATION_TARGETS
             or any(not isinstance(target, str) for target in targets)
             or len(set(targets)) != len(targets)
             or type(created_at) not in {int, float}
@@ -448,6 +450,10 @@ def _reserve(task: _RenderTask, *, deadline: float | None = None) -> None:
             ]
             for item in same_operation:
                 targets.update(item["targets"])
+            if len(targets) > _MAX_RESERVATION_TARGETS:
+                raise RuntimeError(
+                    "This operation already retains the maximum number of recovery destinations"
+                )
             record["targets"] = sorted(targets)
             others = [
                 item
@@ -1047,6 +1053,7 @@ def _admit_submission(
             task,
             condition="recovery_required",
             next_action="blender_render_result_with_distinct_output",
+            destination_recovery_required=True,
         )
         error = ClientError(
             "The job was admitted but its local destination could not be reserved; do not resubmit.",
@@ -1425,6 +1432,7 @@ def _result_for_task(
                     timeout=remaining,
                     progress=lambda item: _progress(task, item),
                     deadline=deadline,
+                    fetch_result=False,
                 )
             else:
                 client.wait(
@@ -1704,16 +1712,15 @@ def bridge_render(
         ),
         auto_preview=preview_value,
     )
-    task = _register_task(task)
     qualify_default = not blocking_value and default_output
-    if not qualify_default:
-        _reserve(task)
-
-    if _self is None:
-        from pymol import cmd
-    else:
-        cmd = _self
     try:
+        task = _register_task(task)
+        if not qualify_default:
+            _reserve(task)
+        if _self is None:
+            from pymol import cmd
+        else:
+            cmd = _self
         payload = build_render_payload(cmd, text(selection), int(state), include_color_hints=True)
         task.request_digest = _request_digest(payload, options)
         admitted = _admit_submission(
@@ -1725,7 +1732,7 @@ def bridge_render(
             admission_bound,
             qualify_default=qualify_default,
         )
-    except Exception:
+    except BaseException:
         if task.status == "starting":
             _release_reservation(task)
             with _TASKS_LOCK:
@@ -1866,6 +1873,48 @@ def _resolve_task_or_job(
     return _register_task(task) if register else task
 
 
+def _retarget_task_if_requested(
+    task: _RenderTask,
+    *,
+    output_dir: Any,
+    output_name: Any,
+    deadline: float,
+) -> None:
+    """Add an explicit recovery destination before changing retained state."""
+    raw_directory = _normalize_cli_string(output_dir)
+    raw_name = _normalize_cli_string(output_name)
+    if raw_directory in {"", "."} and raw_name in {"", "render.png"}:
+        return
+    candidate, default_output = _output_path(output_dir, output_name)
+    if default_output:
+        identity = task.job_id or task.operation_key
+        if identity is None:
+            raise ValueError("A durable operation identity is required for recovery output")
+        candidate = _qualified_output(candidate, identity)
+    if candidate == task.output:
+        return
+    if task.blend_output in {candidate, candidate.with_suffix(".manifest.json")}:
+        raise ValueError("The recovery PNG destination overlaps the explicit Blender scene")
+    for target in (
+        candidate,
+        candidate.with_suffix(".blend"),
+        candidate.with_suffix(".manifest.json"),
+    ):
+        _check_destination(target)
+    # _reserve writes the merged same-operation target set under its file lock.
+    # Update the live task only after that durable reservation succeeds.
+    proposed = replace(task, output=candidate)
+    _reserve(proposed, deadline=deadline)
+    values: dict[str, Any] = {"output": candidate}
+    if task.destination_recovery_required:
+        values.update(
+            destination_recovery_required=False,
+            condition=None,
+            next_action="blender_render_result",
+        )
+    _update(task, **values)
+
+
 def bridge_status(
     identifier="",
     job_id="",
@@ -1945,6 +1994,12 @@ def bridge_result(
     else:
         cmd = _self
     with _bounded_action(deadline, task, next_action="blender_render_result"):
+        _retarget_task_if_requested(
+            task,
+            output_dir=output_dir,
+            output_name=output_name,
+            deadline=deadline,
+        )
         result = _result_for_task(
             task,
             cmd,
@@ -2039,6 +2094,12 @@ def bridge_recover(
     )
     task.auto_preview = preview_value
     with _bounded_action(deadline, task, next_action="blender_render_result"):
+        _retarget_task_if_requested(
+            task,
+            output_dir=output_dir,
+            output_name=output_name,
+            deadline=deadline,
+        )
         state = _query_status(
             task,
             min(_remaining_timeout(deadline, task), 120.0),

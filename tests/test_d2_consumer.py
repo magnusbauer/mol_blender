@@ -2,12 +2,15 @@
 import asyncio
 import copy
 import json
+import threading
+import time
 
 import pytest
 from fastmcp import Client as MCPClient
 from fastmcp.server.auth.providers.jwt import StaticTokenVerifier
 
 from blender_render import mcp_server, presets, selection
+from blender_render.client import ClientError
 from blender_render.api import Downloads
 from blender_render.jobs import JobError, JobStore
 from blender_render.service import RenderService, prepare_options
@@ -352,12 +355,43 @@ def test_blocked_status_is_read_once_and_never_polls_or_recovers(consumer, condi
     job = service.admit_consumer_file('alice', b'public', '.cif', 'public.cif', service.converter, plan)
     service.store.block(job['job_id'], condition, 'admitted')
     reads = []
-    def read():
+    def read(_budget):
         reads.append(True)
         return service.store.get('alice', job['job_id'])
-    result = asyncio.run(mcp_server.wait_for_status(read, 25))
+    result = asyncio.run(
+        mcp_server.wait_for_status(read, 25, job_id=job['job_id'])
+    )
     assert result['condition'] == condition and reads == [True]
     assert not conversions and not service.backend.calls
+
+
+def test_zero_wait_bounds_the_initial_status_transport():
+    release = threading.Event()
+    budgets = []
+
+    def blocked_read(budget):
+        budgets.append(budget)
+        release.wait(5)
+        return {'job_id': 'existing', 'status': 'queued'}
+
+    async def run():
+        try:
+            return await mcp_server.wait_for_status(
+                blocked_read, 0, job_id='existing'
+            )
+        finally:
+            release.set()
+
+    started = time.monotonic()
+    with pytest.raises(ClientError) as caught:
+        asyncio.run(run())
+
+    assert caught.value.code == 'operation_timeout'
+    assert caught.value.job_id == 'existing'
+    assert caught.value.next_action == 'render_status'
+    assert time.monotonic() - started < 1
+    assert len(budgets) == 1
+    assert 0 < budgets[0] <= mcp_server._IMMEDIATE_STATUS_TIMEOUT_SECONDS + .001
 
 
 def test_stdio_default_trust_schemas_do_not_connect(monkeypatch):

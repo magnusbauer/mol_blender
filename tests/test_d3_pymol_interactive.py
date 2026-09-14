@@ -1396,6 +1396,135 @@ def test_correction_explicit_destinations_remain_reserved_until_result(monkeypat
     assert [item[0] for item in calls].count("submit") == 1
 
 
+@pytest.mark.parametrize(
+    "failure",
+    [ValueError("collision"), KeyboardInterrupt("interrupted"), SystemExit("stopped")],
+)
+def test_initial_reservation_failure_never_retains_a_session_handle(
+    monkeypatch, tmp_path, failure
+):
+    calls = []
+    patch_payload(monkeypatch, calls)
+    monkeypatch.setattr(plugin, "_reserve", lambda *args, **kwargs: (_ for _ in ()).throw(failure))
+
+    with pytest.raises(type(failure)):
+        plugin.bridge_render(
+            _self=SimpleNamespace(),
+            output_dir=tmp_path,
+            output_name="reserved.png",
+            blocking=0,
+            auto_preview=0,
+        )
+
+    assert plugin._TASKS == {}
+    assert calls == []
+
+
+def test_retained_job_honors_explicit_replacement_destination(monkeypatch, tmp_path):
+    calls = []
+    client = ImmediateClient(calls, complete=False)
+    patch_payload(monkeypatch, calls)
+    patch_client(monkeypatch, client, calls)
+    handle = plugin.bridge_render(
+        _self=SimpleNamespace(),
+        output_dir=tmp_path,
+        output_name="old.png",
+        blocking=0,
+        auto_preview=0,
+    )
+
+    result = plugin.bridge_result(
+        handle,
+        output_dir=tmp_path,
+        output_name="replacement.png",
+        present=0,
+        _self=SimpleNamespace(),
+    )
+
+    task = plugin._get_task(handle)
+    assert task.output == (tmp_path / "replacement.png").resolve()
+    assert result["outputs"]["render.png"] == str(task.output)
+    record = plugin._read_reservations(plugin._reservation_path())[0]
+    assert str((tmp_path / "old.png").resolve()) in record["targets"]
+    assert str(task.output) in record["targets"]
+
+
+def test_retarget_collision_leaves_task_and_reservation_unchanged(tmp_path):
+    connection = {"kind": "configured", "profile": "local"}
+    first = plugin._RenderTask(
+        handle="pymol-first",
+        job_id="first-job",
+        operation_key="first-operation",
+        profile="local",
+        connection=connection,
+        output=(tmp_path / "first.png").resolve(),
+    )
+    second = plugin._RenderTask(
+        handle="pymol-second",
+        job_id="second-job",
+        operation_key="second-operation",
+        profile="local",
+        connection=connection,
+        output=(tmp_path / "reserved.png").resolve(),
+    )
+    for task in (first, second):
+        plugin._register_task(task)
+        plugin._reserve(task)
+    before = plugin._reservation_path().read_bytes()
+
+    with pytest.raises(ValueError, match="reserved"):
+        with plugin._bounded_action(time.monotonic() + 1, first):
+            plugin._retarget_task_if_requested(
+                first,
+                output_dir=tmp_path,
+                output_name="reserved.png",
+                deadline=time.monotonic() + 1,
+            )
+
+    assert first.output == (tmp_path / "first.png").resolve()
+    assert plugin._reservation_path().read_bytes() == before
+
+
+def test_post_admission_reservation_failure_recovers_to_distinct_output(
+    monkeypatch, tmp_path
+):
+    calls = []
+    client = ImmediateClient(calls)
+    patch_payload(monkeypatch, calls)
+    patch_client(monkeypatch, client, calls)
+    reserve = plugin._reserve
+
+    def fail_admitted(task, **kwargs):
+        if task.job_id is not None:
+            raise ValueError("injected destination collision")
+        return reserve(task, **kwargs)
+
+    monkeypatch.setattr(plugin, "_reserve", fail_admitted)
+    with pytest.raises(ClientError) as caught:
+        plugin.bridge_render(
+            _self=SimpleNamespace(),
+            output_dir=tmp_path,
+            blocking=0,
+            auto_preview=0,
+        )
+    assert caught.value.code == "recovery_required"
+    task = plugin._get_task(caught.value.handle)
+    assert task.destination_recovery_required
+    monkeypatch.setattr(plugin, "_reserve", reserve)
+
+    result = plugin.bridge_result(
+        caught.value.handle,
+        output_dir=tmp_path,
+        output_name="distinct.png",
+        present=0,
+        _self=SimpleNamespace(),
+    )
+
+    assert result["complete"] is True
+    assert Path(result["outputs"]["render.png"]) == (tmp_path / "distinct.png").resolve()
+    assert not task.destination_recovery_required
+
+
 @pytest.mark.parametrize("conflict_name", ["shared.blend", "shared.manifest.json"])
 def test_implicit_blend_and_manifest_destinations_are_collision_protected(
     monkeypatch, tmp_path, conflict_name

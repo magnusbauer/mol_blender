@@ -43,6 +43,8 @@ class AdmissionClient(client.Client):
     def __init__(self, service):
         self.service, self.events = service, []
         self.lose_response = False
+        self.wait_options = None
+        self.download_deadline = None
 
     def request(self, method, path, body=None, **kwargs):
         assert method == 'POST' and path.startswith('/v1/render-files/')
@@ -58,12 +60,14 @@ class AdmissionClient(client.Client):
 
     def wait(self, identifier, **kwargs):
         self.events.append(('wait', identifier))
+        self.wait_options = kwargs
         assert self.service.store.get('cli', identifier)['status'] == 'queued'
         self.service._execute(self.service.store.claim())
         return self.service.store.get('cli', identifier)
 
-    def download(self, identifier, output):
+    def download(self, identifier, output, *, deadline=None):
         self.events.append(('download', identifier))
+        self.download_deadline = deadline
         result = self.service.store.result('cli', identifier)
         return {'job_id': identifier, 'outputs': {'render.png': str(output)}, 'manifest': result['manifest']}
 
@@ -104,6 +108,8 @@ def test_wait_uses_admitted_handle(admission):
     result = run('render', str(path), '--selection', 'chain A')
     identifier = result['job_id']
     assert connection.events == [('admit',), ('wait', identifier), ('download', identifier)]
+    assert connection.wait_options['fetch_result'] is False
+    assert connection.wait_options['deadline'] == connection.download_deadline
     assert service.backend.calls == [identifier]
     assert converted[0][2] == {'selection': 'chain A'}
 

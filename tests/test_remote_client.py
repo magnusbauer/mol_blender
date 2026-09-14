@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+import time
 from pathlib import Path
 
 import pytest
@@ -81,7 +82,58 @@ def test_decode_png_invalid_payload_raises():
 def test_wait_stops_when_privacy_cleanup_removed_result(monkeypatch, state):
     from blender_render.client import Client, ClientError
     client = Client('http://127.0.0.1:9000', 'unused')
-    monkeypatch.setattr(client, 'status', lambda _: {'status':state, 'queue_position':0})
+    monkeypatch.setattr(
+        client,
+        'status',
+        lambda _, **_kwargs: {'status':state, 'queue_position':0},
+    )
     monkeypatch.setattr('blender_render.client.time.sleep', lambda _: pytest.fail('Terminal job must not keep polling'))
     with pytest.raises(ClientError, match=state):
         client.wait('job')
+
+
+def test_wait_bounds_terminal_result_by_same_deadline(monkeypatch):
+    from blender_render.client import Client, ClientError
+
+    client = Client('http://127.0.0.1:9000', 'unused', timeout=30)
+    calls = []
+
+    def request(method, path, body=None, **kwargs):
+        calls.append((path, client.timeout))
+        if path == '/v1/jobs/job':
+            return {'status': 'done', 'queue_position': 0}
+        if path == '/v1/jobs/job/result':
+            time.sleep(.03)
+            return {'job_id': 'job'}
+        raise AssertionError(path)
+
+    monkeypatch.setattr(client, 'request', request)
+    with pytest.raises(ClientError) as caught:
+        client.wait('job', timeout=.01)
+
+    assert caught.value.code == 'operation_timeout'
+    assert caught.value.job_id == 'job'
+    assert caught.value.next_action == 'render_result'
+    assert [path for path, _ in calls] == [
+        '/v1/jobs/job', '/v1/jobs/job/result'
+    ]
+    assert all(0 < timeout <= .011 for _, timeout in calls)
+    assert client.timeout == 30
+
+
+def test_wait_can_return_terminal_status_without_result_read(monkeypatch):
+    from blender_render.client import Client
+
+    client = Client('http://127.0.0.1:9000', 'unused')
+    calls = []
+
+    def request(method, path, body=None, **kwargs):
+        calls.append(path)
+        assert path == '/v1/jobs/job'
+        return {'job_id': 'job', 'status': 'done', 'queue_position': 0}
+
+    monkeypatch.setattr(client, 'request', request)
+    result = client.wait('job', timeout=1, fetch_result=False)
+
+    assert result['status'] == 'done'
+    assert calls == ['/v1/jobs/job']

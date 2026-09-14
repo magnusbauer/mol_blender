@@ -161,8 +161,35 @@ class Client:
     def jobs(self):
         return self.request('GET', '/v1/jobs')
 
-    def status(self, job_id):
-        return self.request("GET", "/v1/jobs/" + job_id)
+    def _request_with_timeout(self, method, path, *, timeout=None):
+        """Issue one read with a temporary transport cap.
+
+        A few compatibility tests intentionally construct ``Client`` subclasses
+        without running ``__init__``. Keep supporting those adapters while
+        ensuring a real transport never inherits a timeout longer than the
+        caller's remaining deadline.
+        """
+        if timeout is None:
+            return self.request(method, path)
+        limit = max(0.001, float(timeout))
+        had_timeout = hasattr(self, "timeout")
+        original_timeout = getattr(self, "timeout", 30)
+        self.timeout = min(float(original_timeout), limit)
+        try:
+            return self.request(method, path)
+        finally:
+            if had_timeout:
+                self.timeout = original_timeout
+            else:
+                self.__dict__.pop("timeout", None)
+
+    def status(self, job_id, *, timeout=None):
+        return self._request_with_timeout("GET", "/v1/jobs/" + job_id, timeout=timeout)
+
+    def result(self, job_id, *, timeout=None):
+        return self._request_with_timeout(
+            "GET", "/v1/jobs/" + job_id + "/result", timeout=timeout
+        )
 
     def cancel(self, job_id):
         return self.request("POST", "/v1/jobs/" + job_id + "/cancel")
@@ -170,26 +197,41 @@ class Client:
     def delete_result(self, job_id):
         return self.request("DELETE", "/v1/jobs/" + job_id + "/result")
 
-    def wait(self, job_id, timeout=1800, progress=None, *, deadline=None):
+    @staticmethod
+    def _deadline_error(job_id, next_action="render_status"):
+        return ClientError(
+            f"Render {job_id} did not complete within the requested deadline; "
+            "reconnect to the existing operation and do not resubmit.",
+            408,
+            "operation_timeout",
+            job_id=job_id,
+            next_action=next_action,
+        )
+
+    def wait(
+        self,
+        job_id,
+        timeout=1800,
+        progress=None,
+        *,
+        deadline=None,
+        fetch_result=True,
+    ):
         deadline = min(
             time.monotonic() + timeout,
             float(deadline) if deadline is not None else float("inf"),
         )
         previous = None
-        # Small injected compatibility clients in the established contract
-        # suite override ``request`` and intentionally bypass ``Client.__init__``.
-        # Bound real clients while retaining that transport-free test adapter.
-        had_timeout = hasattr(self, "timeout")
-        original_timeout = getattr(self, "timeout", 30)
         while time.monotonic() < deadline:
-            self.timeout = min(original_timeout, max(0.001, deadline - time.monotonic()))
+            remaining = deadline - time.monotonic()
             try:
-                state = self.status(job_id)
-            finally:
-                if had_timeout:
-                    self.timeout = original_timeout
-                else:
-                    self.__dict__.pop("timeout", None)
+                state = self.status(job_id, timeout=remaining)
+            except ClientError:
+                if time.monotonic() >= deadline:
+                    raise self._deadline_error(job_id) from None
+                raise
+            if time.monotonic() > deadline:
+                raise self._deadline_error(job_id)
             if state.get('condition') in {'restart_required', 'compatibility_blocked',
                                          'execution_unknown', 'recovery_required'}:
                 raise ClientError(state.get('error') or 'Render operation requires intervention',
@@ -200,13 +242,26 @@ class Client:
                 progress(state)
                 previous = marker
             if state["status"] == "done":
-                return self.request("GET", "/v1/jobs/" + job_id + "/result")
+                if not fetch_result:
+                    return state
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise self._deadline_error(job_id, "render_result")
+                try:
+                    result = self.result(job_id, timeout=remaining)
+                except ClientError:
+                    if time.monotonic() >= deadline:
+                        raise self._deadline_error(job_id, "render_result") from None
+                    raise
+                if time.monotonic() > deadline:
+                    raise self._deadline_error(job_id, "render_result")
+                return result
             if state['status'] == 'transfer_pending':
                 raise ClientError('Child execution retained; recover this operation with recover-transfer', 409, 'transfer_pending')
             if state["status"] in {"failed", "cancelled", "expired", "delivered", "deleted"}:
                 raise ClientError(state.get("error") or "Render " + state["status"])
             time.sleep(min(.5, max(0.0, deadline - time.monotonic())))
-        raise ClientError(f"Render {job_id} is still pending. Reconnect with status/result; do not resubmit.")
+        raise self._deadline_error(job_id)
 
     def download(self, job_id, output, *, deadline=None):
         from .delivery import recover_result
@@ -265,6 +320,15 @@ class ConfiguredClient(Client):
         connection = _connect_client(self.profile, intention=intention, **self.options)
         return connection.request(method, path, body, **kwargs)
 
+    def _request_with_timeout(self, method, path, *, timeout=None):
+        if timeout is None:
+            return self.request(method, path)
+        options = dict(self.options)
+        requested = max(0.001, float(timeout))
+        configured = float(options.get("timeout", requested))
+        options["timeout"] = min(configured, requested)
+        return ConfiguredClient(self.profile, self.intention, options).request(method, path)
+
     def download(self, job_id, output, *, deadline=None):
         # Resolve credentials without startup, then scope receipts to this
         # concrete service and credential. No upload/submit fallback exists.
@@ -274,7 +338,15 @@ class ConfiguredClient(Client):
             job_id, output, deadline=deadline
         )
 
-    def wait(self, job_id, timeout=1800, progress=None, *, deadline=None):
+    def wait(
+        self,
+        job_id,
+        timeout=1800,
+        progress=None,
+        *,
+        deadline=None,
+        fetch_result=True,
+    ):
         intention = (
             ConnectionIntention.ATTACH_EXISTING
             if self.intention in {
@@ -286,7 +358,11 @@ class ConfiguredClient(Client):
         options = dict(self.options)
         options["timeout"] = min(float(options.get("timeout", timeout)), float(timeout))
         return _connect_client(self.profile, intention=intention, **options).wait(
-            job_id, timeout, progress, deadline=deadline
+            job_id,
+            timeout,
+            progress,
+            deadline=deadline,
+            fetch_result=fetch_result,
         )
 
     def render_consumer_file(self, path, request):

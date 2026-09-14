@@ -21,6 +21,7 @@ MESSAGES = {
     'recovery_required': 'The existing operation requires recovery inspection.',
     'transfer_pending': 'The existing render requires transfer recovery.',
     'not_ready': 'The existing render is not ready for delivery.',
+    'operation_timeout': 'The bounded operation timed out. Reconnect to the existing job; do not resubmit.',
     'not_found': 'The requested owner-scoped resource was not found.',
     'unauthorized': 'Authentication is required.',
     'delivered': 'The result was delivered. Use the verified local copy.',
@@ -51,6 +52,7 @@ def error_record(code, *, default='selection_invalid'):
     original = code if isinstance(code, str) and (code in MESSAGES or code in ALIASES) else safe
     action = {'operation_conflict': 'inspect_request_key', 'attachment_unavailable': 'reattach_file',
         'transfer_pending': 'recover_transfer', 'not_ready': 'render_status',
+        'operation_timeout': 'render_status',
         'metadata_invalid': 'operator_inspection', 'presentation_failed': 'use_delivered_outputs'}.get(safe, 'inspect_operation_or_revise_request')
     return {'accepted': False, 'error_category': safe, 'code': original,
             'error_message': MESSAGES[safe], 'next_action': action}

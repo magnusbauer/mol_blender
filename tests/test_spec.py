@@ -238,7 +238,7 @@ def test_custom_surface_through_adapter_to_worker(adapter, bundle, tmp_path, mon
                                                             state=rendering.RenderServerState(worker))
             return {"job_id": "job"}
         def wait(self, *args, **kwargs): pass
-        def download(self, job, output):
+        def download(self, job, output, *, deadline=None):
             Path(output).write_bytes(b"PNG fixture")
             return {"outputs": {"render.png": str(output)}}
     client = Client()

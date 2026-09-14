@@ -304,8 +304,18 @@ def execute(args):
         print("Job " + job["job_id"], file=sys.stderr, flush=True)
         if args.no_wait:
             return job
-        client.wait(job["job_id"], timeout=args.timeout, progress=lambda s: print(f"{s['status']} (queue position {s['queue_position']})", file=sys.stderr))
-        return client.download(job["job_id"], args.output)
+        deadline = time.monotonic() + args.timeout
+        client.wait(
+            job["job_id"],
+            timeout=args.timeout,
+            progress=lambda s: print(
+                f"{s['status']} (queue position {s['queue_position']})",
+                file=sys.stderr,
+            ),
+            deadline=deadline,
+            fetch_result=False,
+        )
+        return client.download(job["job_id"], args.output, deadline=deadline)
     if args.command == "quota":
         return client.request("GET", "/v1/quota")
     if args.command == "structures":
