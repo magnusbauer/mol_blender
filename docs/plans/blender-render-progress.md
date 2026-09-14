@@ -1,5 +1,127 @@
 # Blender Render implementation progress
 
+## Milestone D remediation and closure — 2026-09-14
+
+Milestone D is complete on `codex/milestone-d`. This entry supersedes the
+2026-09-13 integration checkpoint's D4 evidence and its statement that
+current-source live acceptance remained pending. The reviewed product/build
+source is clean commit `f46057ecb4cea80a24b5d6dbc39d0bd9f833cae6`:
+`4ff0faa` fixes bounded client/MCP reads and atomic PyMOL recovery, and
+`f46057e` hardens forced publication and D4 evidence. This progress-only update
+does not alter the validated build-input inventory.
+
+All eight review findings are closed. Client status and result reads accept
+per-call limits; CLI and PyMOL share one monotonic wait/download deadline and do
+not fetch a terminal result twice; MCP starts its deadline before the first
+status read, including a single 0.5-second maximum read for `wait_seconds=0`.
+PyMOL now cleans registration/reservation failures across `BaseException`, keeps
+admitted or ambiguous jobs recoverable, and atomically reserves an explicitly
+replaced PNG/blend/manifest/receipt destination while retaining prior recovery
+targets. Forced plugin publication uses a deterministic sibling transaction,
+restores operator extras across interruption, safely resolves target-missing
+stale transactions, refuses target-plus-backup ambiguity, and names the retained
+backup if rollback fails. D4 now rejects dirty allowlisted tracked or untracked
+inputs, records the source commit and canonical relative inventories, and scans
+the complete staged source, extracted source distribution, direct wheel,
+sdist-built wheel, and isolated installed target for generic Unix, macOS,
+Windows, home, and scratch paths.
+
+### Clean build and contract evidence
+
+The D4 validator ran from a clean detached worktree at the commit above. It
+created and installed only into external temporary storage. Its reviewed and
+staged inventories are identical: 120 files, canonical inventory SHA-256
+`2f6fed612c0a9936227915d387bbd28f622ba67d7ba78b76ed08bc33adc16e81`.
+The complete-form privacy scans covered 229 staged-source, 225 extracted-sdist,
+111 direct-wheel, 111 sdist-wheel, and 183 installed-target files; every owner,
+credential, personal-path, and generated-private-variant match list is empty.
+
+| Check | Executed result |
+| --- | --- |
+| Repository suite | **1,244 passed**, 4 inherited warnings, 401.96s. An earlier run exposed two compatibility regressions; both were corrected before this clean rerun. |
+| Installed D4 contracts | **91 passed, 1 intentional guard-self-test skip**, 0.64s; zero audited boundary attempts. |
+| Installed D1-D3/inherited contracts | **1,107 passed, 2 intentional A/B guard skips**, 4 inherited warnings, 55.26s; zero audited boundary attempts. |
+| Source identity | Full commit recorded, allowlisted source clean, reviewed/staged inventories and sidecars recorded with equal count and digest. |
+| Package forms | Renderer bytes agree across source, staging, sdist, direct wheel, sdist-built wheel, and external install; direct/sdist wheel payloads agree. |
+| Official validation | Seven plugin forms and all fourteen render/develop skills passed the installed validators. |
+| Whitespace | `git diff --check` passed. |
+
+Direct wheel SHA-256 is
+`70ecd4cc2a9917468004b03e92bcdbfdb69d02888fef4b785779444df30fc936`;
+source-distribution SHA-256 is
+`6a5a17544554c6649b84bf67b03c89be31bfefda230bdc48ceff3ebcd2bbcfff`;
+the sdist-built wheel SHA-256 is
+`a098b4d41fbac30e334cb84b439b59292fba1e9ef45c808aab8e4a3ec2851bd5`.
+The external D4 `evidence.json` SHA-256 is
+`33c60f5fafe929eab6dbe3a1a71cb7ff4bab61e8cacb810b9ec8aaf598c886f4`.
+No dependency was fetched.
+
+### Configured-route acceptance
+
+Read-only inventory found no user profile configuration, no existing local or
+Apptainer controller, and no local Blender executable. Those routes were not
+configured and runnable before remediation, so they were not created merely to
+expand the matrix. The sole eligible route was the pre-existing private
+`lab_http` installation route. Its lightweight proxy was reachable with an idle
+upstream; ordinary upload started the existing controller. No deployment,
+installation, scheduler allocation, or route change occurred.
+
+Real current-source PyMOL used only public `examples/1sps.cif` and rough mode.
+Each accepted render exported CIF first, ran DSS, retained the enabled object,
+selection/state, atom-color hints, full 18-value view, 27-degree FOV,
+perspective projection, 800×600 viewport, and framing. The complete-JSON case
+also retained a non-identity object transform. Both manifests select CIF,
+`mn_cartoon`, `mn_native_sticks`, and `ligand_atom_spheres=false`. Each verified
+PNG was then loaded by real PyMOL's PNG loader: movie length changed from zero
+to one and presentation returned `inline_preview`. The synchronous headless
+render command correctly reported `fallback_path` because no GUI dispatcher was
+available; the subsequent actual loader call proves presentation without
+claiming visible Qt-window inspection.
+
+| Input | Job / calls | Result and hashes |
+| --- | --- | --- |
+| `preset_1_interface` | Job `3da26e9d13f9da0054cbc030f0a790d1`; one worker attempt, one result retrieval | `delivered`; resolved-style/RenderSpec `0e93833ec8cb39b74cdcc2ce5c725806abde763728db2581710e5bcaa74bdd83`; PNG `c6b76fce4c8ccbd330d25c21111d07cbb4808dd515dc3b1ef964375921ee6fbd`; manifest `7ef5322837bce3fce3b4c37e82279cf19ec7bb43fdbe2fc42d812348d76b639a`. |
+| Equivalent complete style JSON | Job `f353f8ef0170e41cfa7826f07f5226f9`; 1 upload, 1 submission, 20 bounded status reads, 1 result-inventory retrieval, one worker attempt | `delivered`; same resolved-style/RenderSpec hash `0e93833ec8cb39b74cdcc2ce5c725806abde763728db2581710e5bcaa74bdd83`; PNG `6fee2b91da8ad31674c7ce97cccfb65d447bbcb3dfea03e27bbe56757d505a71`; manifest `b251b3d66bb1256df43505dca0c77c596b716aae37373c06cd7cb45386249a75`. |
+
+One additional zero-cost diagnostic job,
+`81161f4ca4ff1773fa5479216ad9f77a`, completed with one worker attempt before the
+accepted complete-JSON run. It established that the raw shipped preset source
+JSON is not equivalent to named-preset invocation: built-ins apply their
+preserve-input camera policy, whereas authoritative raw JSON keeps its authored
+camera. It is excluded from the acceptance pair; the accepted full JSON is the
+complete resolved preset document and its live hash matches the named preset.
+No ambiguous or paid execution was retried.
+
+### MCP and model-assisted selection
+
+One current-source in-process MCP flow exercised the ordinary tool protocol with
+a fake leaf worker, distinct from the live PyMOL route evidence. Job
+`e182500c453b929aca835550a37db33b` used exactly 1 `render_structure`, 2 bounded
+`render_status`, and 1 `render_result` call; attachment download, conversion,
+and dispatch counts were each 1. It finished `done`, returned a complete inline
+PNG preview, and made 0 preset-catalog and 0 quota calls. No duplicate dispatch
+occurred.
+
+Model-assisted selection was rerun directly without catalog or quota preflight:
+
+- A common pastel clay cartoon with native ligand sticks selected
+  `builtin/preset_1_interface`, high fit, through `preset-overrides`.
+- Inspected public `examples/developer/deep_focus.png` (SHA-256
+  `13baee6a289c2fa7b62cefdcef1482b295f1a48a647b1dfc890cdec17c618948`)
+  produced a high-fit, inspectable existing-preset override for
+  `materials.inner_chain_a.base_color=#729ECC`.
+- Inspected public `examples/developer/focus.png` (SHA-256
+  `712f3759c18c7da9d14ff8e67ba7116bb8574624c999ebf238f95835c4d14cd8`)
+  produced low fit, `new_preset_recommended=true`, and
+  `developer/new-preset` for the unmatched depth-of-field design.
+
+The sanitized external acceptance record has SHA-256
+`f9d435f94de8f93cabf315c81af08c893cdd34236cb30a6174fcd1dcbf4b527d`.
+Milestone D is closed. Milestone E has not begun: no backend deployment,
+Slurm/Modal installation, plugin promotion or reinstallation, fresh-host
+Codex/ChatGPT test, OAuth/publication work, unrestricted service release, or
+publisher review was performed. Those release gates remain explicitly open.
+
 ## Milestone D integration checkpoint — 2026-09-13
 
 The bounded Milestone D implementation is complete on `codex/milestone-d`.
