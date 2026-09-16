@@ -3640,7 +3640,7 @@ def _apply_pymol_ss_hints(load_result: Any, view_doc: dict[str, Any]) -> int:
         return 0
 
 
-def _render(args: argparse.Namespace) -> None:
+def _render(args: argparse.Namespace) -> tuple:
     from blender_render.engine import protect
     protect('render')
     _ensure_biotite_ccd_database(before_execution=True)
@@ -4371,6 +4371,7 @@ def _render(args: argparse.Namespace) -> None:
         except Exception as exc:
             raise RuntimeError("Required render manifest could not be written") from exc
     print(f"Custom render complete: {output_png}")
+    return scene, camera, light_target
 
 
 def main() -> None:

@@ -1,5 +1,31 @@
 # Blender Render implementation progress
 
+## Neon duplex rocking example — 2026-09-16
+
+User-authorized side task on `codex/neon-duplex-rocking`: add a trusted offline
+animation utility and generate GIF/MP4 examples for `neon_duplex_hero` with public
+7PZB. The existing shared renderer now returns its constructed scene, camera and
+molecular center to the utility; still-render callers keep their existing behavior.
+The utility adds only a sinusoidal camera orbit and FFmpeg encoding. Preset/schema,
+service admission, deployment and hosted animation support are unchanged.
+
+Executed validation: the focused rocking/spec/reference-preset/render-server suite
+passed **69 tests**; four unrelated MCP transport cases were deselected after
+system Python lacked FastMCP and an alternate environment stalled (interrupted
+at 43 passes). The six new motion/real-FFmpeg tests also passed from a built wheel
+installed into external temporary storage, with imported package location checked.
+No broader release or installed-host acceptance is claimed.
+
+Actual local Apptainer GPU run completed all 72 frames at 960 × 540 / 64 samples
+using Blender 5.0.1, Molecular Nodes 4.5.10 and CUDA on an RTX 4080 SUPER. The
+manifest confirms cartoon polymers and native Molecular Nodes ligand sticks
+without atom spheres. Both ±12° turning points were visually inspected for
+framing. FFprobe verified 72 frames in both outputs; MP4 duration is 3.000 seconds
+and GIF duration is also 3.000 seconds. Infinite GIF loop, distinct
+views, all artifact hashes and temporary-frame cleanup were verified. Results
+are under the ignored `renders/neon-duplex-rocking/` directory. The user's existing
+README edits and untracked CIF were preserved and excluded from this commit.
+
 ## Milestone D remediation and closure — 2026-09-14
 
 Milestone D is complete on `codex/milestone-d`. This entry supersedes the
