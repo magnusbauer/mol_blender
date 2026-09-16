@@ -1,4 +1,4 @@
-# Offline rocking animation
+# Offline rocking and 360° spin animation
 
 The trusted developer utility builds a scene with the shared renderer, then
 orbits its camera around the molecular bounds along the initial camera-up axis.
@@ -34,3 +34,14 @@ The manifest records motion, runtime, input/spec/source hashes and output hashes
 Intermediate CIF, view and frames are cleaned on success or failure. Existing
 output directories are rejected. A failed render leaves diagnostics, not a
 completed animation manifest. Generated outputs belong outside version control.
+
+For a constant-speed 360° spin lasting six seconds, use the same bundle/runtime:
+
+```sh
+python -m blender_render.rocking --bundle bundle.json --output spin-output \
+  --image blender-render.sif --motion spin --frames 144 --fps 24
+```
+
+This writes `spin.gif` and `spin.mp4`. Each frame advances 2.5° around the same
+camera-up axis; the loop wraps from 357.5° to 0° without a repeated endpoint.
+`--amplitude` is rejected for spin mode, since it always makes a full revolution.

@@ -1,5 +1,22 @@
 # Blender Render implementation progress
 
+## Neon duplex 360° spin — 2026-09-16
+
+Follow-up on the same branch adds `--motion spin` to the offline utility.
+The shared Blender scene and orbit code are reused unchanged. Spin advances at
+constant speed through one full revolution, omits the duplicate endpoint, writes
+`spin.gif` / `spin.mp4`, and records rotation mode and angles in the manifest.
+Rocking remains the default; spin rejects the inapplicable amplitude argument.
+
+Executed: **71 focused tests passed, 4 inherited MCP cases deselected**;
+**8 animation tests passed from an externally built and installed wheel**.
+The public 7PZB GPU render completed **144 frames, 960 × 540, 64 samples, 24 FPS**.
+FFprobe confirmed 144 frames and six seconds in both outputs; GIF infinite-loop
+metadata, distinct quarter-turn images, artifact hashes and temporary-frame
+cleanup passed. Side, rear and opposite-side views were visually checked for
+framing. Artifacts are in ignored `renders/neon-duplex-spin/`. Existing user
+changes remain excluded. No service or deployment change.
+
 ## Neon duplex rocking example — 2026-09-16
 
 User-authorized side task on `codex/neon-duplex-rocking`: add a trusted offline
