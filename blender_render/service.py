@@ -114,11 +114,11 @@ def validate_input(payload: dict, *, max_atoms: int, max_bytes: int) -> dict:
     return data
 
 
-def prepare_options(options: dict, payload: dict, *, public: bool, timeout: int, preset_definition=None) -> dict:
+def prepare_options(options: dict, payload: dict, *, public: bool, timeout: int, preset_definition=None, allow_animation=False) -> dict:
     """Compatibility boundary: all style resolution lives in spec.resolve_options."""
     from .spec import resolve_options
     try:
-        return resolve_options(options, payload, public=public, timeout=timeout, preset_definition=preset_definition)
+        return resolve_options(options, payload, public=public, timeout=timeout, preset_definition=preset_definition, allow_animation=allow_animation)
     except (ValueError, core.RunnerError) as exc:
         raise JobError(str(exc)) from exc
 
@@ -317,7 +317,7 @@ class RenderService:
                 if not consumer.executable(exact):
                     return consumer.non_admission(exact, 'configured')
                 options = prepare_options(consumer.render_options(plan['request']), bundle,
-                    public=plan['public'], timeout=self.store.policy.max_job_seconds)
+                    public=plan['public'], allow_animation=self.store.policy.allow_animation, timeout=self.store.policy.max_job_seconds)
                 consumer.validate_bundle_controls(options, bundle)
             except JobError:
                 raise
@@ -430,7 +430,7 @@ class RenderService:
                         raise JobError(str(exc)) from exc
                     normalized = freeze_file_options(options)
                 else:
-                    normalized = prepare_options(options, payload, public=self.store.policy.public, timeout=self.store.policy.max_job_seconds)
+                    normalized = prepare_options(options, payload, public=self.store.policy.public, allow_animation=self.store.policy.allow_animation, timeout=self.store.policy.max_job_seconds)
             except core.StyleValidationError as exc:
                 raise JobError(str(exc)) from exc
             result = self.store.submit(owner, input_id, normalized, idempotency_key, client_hash=client_hash, rerender=rerender, operation_key=operation_key)
@@ -466,7 +466,7 @@ class RenderService:
                 raise ValueError('Invalid scoped operation identity')
             p = self.store.policy
             snapshot = validate_snapshot({k: v for k, v in envelope.items() if k not in context},
-                public=p.public, max_atoms=p.max_atoms if p.public else 10000000,
+                public=p.public, allow_animation=p.allow_animation, max_atoms=p.max_atoms if p.public else 10000000,
                 max_bytes=p.max_upload_bytes, timeout=p.max_job_seconds)
         except (KeyError, ValueError, core.RunnerError) as exc:
             raise JobError(str(exc)) from exc
@@ -545,7 +545,7 @@ class RenderService:
                         raise JobError('Exact-context selection refused before backend dispatch', 'selection_refused', 422)
                     consumer_metadata = consumer.metadata(decision, previous=initial_metadata, phase='bound')
                 try:
-                    request = prepare_options(request['prepare_file'], payload, public=public,
+                    request = prepare_options(request['prepare_file'], payload, public=public, allow_animation=p.allow_animation,
                                               timeout=p.max_job_seconds, preset_definition=definition)
                     if consumer_metadata is not None:
                         consumer.validate_bundle_controls(request, payload)
@@ -572,7 +572,7 @@ class RenderService:
                 except (ValueError, TypeError) as exc:
                     raise StoredSnapshotIntegrityError('Stored child execution requires recovery') from exc
             else:
-                snapshot = validate_snapshot_for_execution(json.loads(frozen), public=self.store.policy.public,
+                snapshot = validate_snapshot_for_execution(json.loads(frozen), public=self.store.policy.public, allow_animation=self.store.policy.allow_animation,
                     max_atoms=self.store.policy.max_atoms if self.store.policy.public else 10000000,
                     max_bytes=self.store.policy.max_upload_bytes, timeout=self.store.policy.max_job_seconds)
             request = dispatch_request(snapshot, 'controller', job['owner'], identifier)
@@ -658,7 +658,10 @@ class RenderService:
         root = self.store.artifacts / identifier
         root.mkdir(mode=0o700, exist_ok=True)
         records = []
-        for key, name, mime in (("png_base64", "render.png", "image/png"), ("blend_base64", "render.blend", "application/octet-stream")):
+        from .artifacts import MEDIA, FIELDS
+        from .animation import required_names
+        for name, key in FIELDS.items():
+            mime = MEDIA[name]
             if not result.get(key):
                 continue
             data = base64.b64decode(result[key], validate=True)
@@ -676,6 +679,9 @@ class RenderService:
         if frozen:
             snapshot = json.loads(frozen)
             manifest.update(bundle_sha256=snapshot['bundle_sha256'], render_spec=snapshot['request']['render_spec'])
+            expected = required_names(snapshot['request']['style_doc'])
+            if not set(expected).issubset({item['name'] for item in records}):
+                raise RuntimeError('Renderer omitted requested animation artifacts')
         for key in ("chosen_structure_path", "temp_dir", "manifest_path"):
             manifest.pop(key, None)
         for key in ('timings', 'timings_seconds', 'operation_stages', 'runtime_seconds'):
@@ -699,7 +705,8 @@ class RenderService:
     def artifact(self, owner: str, identifier: str, name: str, *, _inventory=None) -> tuple[Path, str]:
         result = self.store.result(owner, identifier, inventory=True) if _inventory is None else _inventory
         record = next((item for item in result["artifacts"] if item["name"] == name), None)
-        if record is None or name not in {"render.png", "render.blend", "manifest.json"}:
+        from .artifacts import MEDIA
+        if record is None or name not in MEDIA:
             if any(a['name'] == name for a in result['expected_artifacts']):
                 raise JobError('Artifact unavailable.', 'artifact_unavailable', 410)
             raise JobError("Artifact not found.", "not_found", 404)

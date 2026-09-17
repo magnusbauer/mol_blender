@@ -29,7 +29,7 @@ CAPABILITIES = sorted({
     'material.frosted_grid', 'material.color_gradient', 'material.attribute_color',
     'material.fog_glow', 'material.edge_highlight', 'material.uniform_polymer_color',
     'geometry.edge_rounding', 'geometry.element_palette', 'world.directional_gradient',
-    'world.separate_illumination', 'camera.depth_of_field', 'camera.reference_framing',
+    'world.separate_illumination', 'camera.depth_of_field', 'camera.reference_framing', 'animation.camera_orbit', 'encoding.ffmpeg',
 })
 
 

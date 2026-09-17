@@ -35,6 +35,7 @@ class JobError(ValueError):
 @dataclass(frozen=True)
 class Policy:
     public: bool = False
+    allow_animation: bool = False  # Explicit private paid deployment policy, never a request option.
     budget_usd: float = 450.0
     daily_jobs: int = 10
     quota_exempt_owners: tuple[str, ...] = ()
@@ -895,8 +896,11 @@ class JobStore:
             record = {k: v for k, v in (result or {}).items() if k != 'manifest'}
             expires = (row['remote_completed_at'] or self.clock())+self.policy.ttl_seconds if state == 'done' else None
             if state == 'done':
+                from .animation import required_names
                 expected = artifact_lifecycle.inventory(record.get('artifacts', []), expires,
-                                                        bool(json.loads(row['options']).get('save_blend')))
+                                                        bool(json.loads(row['options']).get('save_blend')),
+                                                        required=required_names(
+                                                            json.loads(row['options']).get('style_doc', {})))
                 states = {a['name']: 'available' for a in expected['artifacts']}
                 db.execute('UPDATE jobs SET expected_artifacts=?,artifact_states=? WHERE id=?',
                            (json.dumps(expected), json.dumps(states), identifier))
@@ -987,7 +991,7 @@ class JobStore:
                 target = destination / row['id']
                 if target.exists():
                     for item in result['artifacts']:
-                        if item['name'] not in {'render.png', 'render.blend', 'manifest.json'}:
+                        if item['name'] not in artifact_lifecycle.MEDIA:
                             raise JobError('Unexpected artifact name')
                         path = target / item['name']
                         if target.is_symlink() or path.is_symlink() or not path.is_file() or path.stat().st_size != item['size'] or hashlib.sha256(path.read_bytes()).hexdigest() != item['sha256']:
@@ -998,7 +1002,7 @@ class JobStore:
                     staged = Path(temp) / row['id']
                     staged.mkdir(mode=0o700)
                     for item in result['artifacts']:
-                        if item['name'] not in {'render.png', 'render.blend', 'manifest.json'}:
+                        if item['name'] not in artifact_lifecycle.MEDIA:
                             raise JobError('Unexpected artifact name')
                         source = artifact_lifecycle.valid_copy(self.db, row['id'], item)
                         if source is None:

@@ -83,6 +83,9 @@ def required_capabilities(style: dict) -> list[str]:
         required.add("material.uniform_polymer_color")
     if any("nucleic_base_scale" in entry for entry in style["styles"]):
         required.add("representation.nucleic_base_thickness")
+    cfg = style.get('output', {}).get('animation', {})
+    if cfg.get('mode') in ('rock', '360'):
+        required.update(('animation.camera_orbit', 'encoding.ffmpeg'))
     return sorted(required)
 
 

@@ -47,6 +47,11 @@ def parser():
     render.add_argument("--transparent", action="store_true", default=None)
     render.add_argument("--color-follow", action="store_true")
     render.add_argument("--save-blend", action="store_true", default=None)
+    render.add_argument('--animation', choices=('none', 'rock', '360'))
+    render.add_argument('--duration', type=float)
+    render.add_argument('--fps', type=int)
+    render.add_argument('--rock-angle', type=float)
+    render.add_argument('--gif', action='store_true', default=None)
     render.add_argument("--no-wait", action="store_true")
     render.add_argument("--idempotency-key")
     render.add_argument('--operation-key', help='Stable key for one logical request across retries')
@@ -282,7 +287,7 @@ def execute(args):
                                image=getattr(args,'image',''), pymol_python=getattr(args,'pymol_python',''))
     if args.command == "render":
         path = Path(args.input).expanduser()
-        options = {k: getattr(args, k) for k in ("preset", "width", "height", "samples", "rough", "color_follow", "save_blend", "keep_temp", "preserve_view") if getattr(args, k) is not None}
+        options = {k: getattr(args, k) for k in ("preset", "width", "height", "samples", "rough", "color_follow", "save_blend", "keep_temp", "preserve_view", "animation", "duration", "fps", "rock_angle", "gif") if getattr(args, k) is not None}
         if args.style_json:
             options["style_doc"] = json.loads(Path(args.style_json).read_text())
             options.pop("preset", None)

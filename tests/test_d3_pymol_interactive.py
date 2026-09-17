@@ -497,6 +497,7 @@ def test_no_dead_legacy_controls_and_all_commands_are_registered():
         "blender_render_result",
         "blender_render_cancel",
         "blender_render_recover",
+        "blender_movie_export",
     ]
     registered = []
     recorder = SimpleNamespace(extend=lambda name, function: registered.append(name))
@@ -1525,7 +1526,7 @@ def test_post_admission_reservation_failure_recovers_to_distinct_output(
     assert not task.destination_recovery_required
 
 
-@pytest.mark.parametrize("conflict_name", ["shared.blend", "shared.manifest.json"])
+@pytest.mark.parametrize("conflict_name", ["shared.blend", "shared.manifest.json", "shared.mp4", "shared.gif", "shared.frames.zip"])
 def test_implicit_blend_and_manifest_destinations_are_collision_protected(
     monkeypatch, tmp_path, conflict_name
 ):
@@ -1891,6 +1892,7 @@ def test_correction_registration_is_idempotent():
         "blender_render_result",
         "blender_render_cancel",
         "blender_render_recover",
+        "blender_movie_export",
     ]
     registered = []
     recorder = SimpleNamespace(extend=lambda name, function: registered.append(name))
@@ -2153,3 +2155,57 @@ def test_submit_existing_intention_allows_post_without_starting(monkeypatch):
         "connect", "local", client.ConnectionIntention.SUBMIT_EXISTING
     )
     assert calls[1][0:2] == ("POST", "/v1/structures")
+
+
+def test_partial_animation_does_not_present_still(monkeypatch, tmp_path):
+    calls = []
+    client = ImmediateClient(calls, complete=False)
+    patch_payload(monkeypatch, calls)
+    patch_client(monkeypatch, client, calls)
+    handle = plugin.bridge_render(_self=SimpleNamespace(), output_dir=tmp_path,
+                                  output_name="movie.png", blocking=0, auto_preview=0)
+    task = plugin._get_task(handle)
+    task.required_outputs = ("render.png", "render.mp4", "frames.zip")
+    recorder = PresentationRecorder()
+    result = plugin.bridge_result(handle, present=1, _self=recorder)
+    assert not result["complete"]
+    assert result["presentation_status"] == "not_attempted"
+    assert recorder.preview_threads == []
+
+
+@pytest.mark.parametrize('blocking', [0, 1])
+def test_movie_delivery_preserves_archive_and_auto_preview_zero(monkeypatch, tmp_path, blocking):
+    from PIL import Image
+    from blender_render.animation import package_frames
+    frames = tmp_path / 'source-frames'
+    frames.mkdir()
+    for index in range(4):
+        Image.new('RGBA', (32, 24), 'blue').save(frames / f'{index:04d}.png')
+    archive = tmp_path / 'source.zip'
+    package_frames(frames, archive, dict(mode='rock', duration=1, fps=4), 32, 24)
+    calls = []
+
+    class MovieClient(ImmediateClient):
+        def download(self, job_id, output):
+            result = super().download(job_id, output)
+            for name, suffix, raw in [('render.mp4', '.mp4', b'fake-mp4'),
+                                      ('frames.zip', '.frames.zip', archive.read_bytes())]:
+                target = Path(output).with_suffix(suffix)
+                target.write_bytes(raw)
+                result['outputs'][name] = str(target)
+                result['artifacts'].append(dict(name=name, size=len(raw),
+                    sha256=hashlib.sha256(raw).hexdigest(), required=True, verified_locally=True))
+            return result
+
+    patch_payload(monkeypatch, calls)
+    patch_client(monkeypatch, MovieClient(calls), calls)
+    cmd = PresentationRecorder()
+    result = plugin.bridge_render(_self=cmd, output_dir=tmp_path, output_name='animation.png',
+        animation='rock', duration=1, fps=4, width=32, height=24, blocking=blocking, auto_preview=0)
+    if not blocking:
+        result = plugin.bridge_result(result, present=0, _self=cmd)
+    assert result['complete']
+    assert result['presentation_status'] == 'not_attempted'
+    assert cmd.preview_threads == []
+    assert Path(cmd._blender_render_movie_archive[0]).read_bytes() == archive.read_bytes()
+    assert [item[0] for item in calls].count('submit') == 1

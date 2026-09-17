@@ -64,6 +64,40 @@
         },
         "raw_view": {
           "type": "boolean"
+        },
+        "animation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "mode"
+          ],
+          "properties": {
+            "mode": {
+              "enum": [
+                "none",
+                "rock",
+                "360"
+              ]
+            },
+            "duration": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 15
+            },
+            "fps": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 60
+            },
+            "rock_angle": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 45
+            },
+            "gif": {
+              "type": "boolean"
+            }
+          }
         }
       }
     },

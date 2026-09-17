@@ -14,7 +14,7 @@ from fastapi import FastAPI, Request
 
 
 def create_worker(token: str, *, timeout: int = 600, backend_factory=None,
-                  max_atoms: int = 100000, max_bytes: int = 50*1024**2):
+                  allow_animation: bool = False, max_atoms: int = 100000, max_bytes: int = 50*1024**2):
     from fastapi.responses import JSONResponse
     from .api import BoundedBody
     from .service import HostBackend
@@ -76,7 +76,7 @@ def create_worker(token: str, *, timeout: int = 600, backend_factory=None,
                     or not 1 <= len(context['owner_id']) <= 128):
                 raise ValueError('Invalid authenticated execution context')
             protect('admission')
-            validate_snapshot(request_snapshot(payload), public=True, timeout=timeout,
+            validate_snapshot(request_snapshot(payload), public=True, allow_animation=allow_animation, timeout=timeout,
                               max_atoms=max_atoms, max_bytes=max_bytes)
             def run():
                 try:

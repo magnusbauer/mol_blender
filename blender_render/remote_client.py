@@ -73,10 +73,11 @@ def submit_render(
         job = client.submit(source["input_id"], options)
         result = client.wait(job["job_id"], timeout=timeout)
         response = {"status":"completed", "job_id":job["job_id"], "output_name":output_name or "render.png", "manifest":result["manifest"]}
+        from .artifacts import FIELDS
         for item in result["artifacts"]:
-            if item["name"] in {"render.png", "render.blend"}:
+            if item["name"] in FIELDS:
                 raw = client.request("GET", f"/v1/jobs/{job['job_id']}/artifacts/{item['name']}", binary=True)
-                response["png_base64" if item["name"].endswith(".png") else "blend_base64"] = base64.b64encode(raw).decode()
+                response[FIELDS[item["name"]]] = base64.b64encode(raw).decode()
         return response
     except ClientError as exc:
         raise RemoteRenderError(str(exc)) from exc

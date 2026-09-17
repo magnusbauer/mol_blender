@@ -31,7 +31,7 @@ def freeze_execution(payload, request):
             'request': copy.deepcopy(request), 'expected_engine': engine_identity()}
 
 
-def validate_snapshot_for_execution(snapshot, *, public=False, max_atoms=10000000, max_bytes=50*1024**2, timeout=600):
+def validate_snapshot_for_execution(snapshot, *, public=False, allow_animation=False, max_atoms=10000000, max_bytes=50*1024**2, timeout=600):
     from .service import validate_input
     from .core import validate_style_document
     from .presets import required_capabilities
@@ -80,6 +80,8 @@ def validate_snapshot_for_execution(snapshot, *, public=False, max_atoms=1000000
         raise ValueError('Resolved request conflicts with immutable specification')
     if type(request['job_timeout_seconds']) not in (int, float) or not 0 < request['job_timeout_seconds'] <= timeout:
         raise ValueError('Resolved request exceeds receiving timeout policy')
+    if public and not allow_animation and output.get('animation', {}).get('mode', 'none') != 'none':
+        raise ValueError('Shared hosted animation is not enabled')
     if public and (request['keep_temp'] or output['raw_view'] or max(output['width'], output['height']) > 4096
                    or output['samples'] > 512 or style['renderer']['engine'] != 'CYCLES'
                    or style['renderer'].get('device') != 'GPU' or style['renderer'].get('require_gpu') is not True):

@@ -453,7 +453,8 @@ def create_app(service: RenderService, *, token: str, public_url: str = "", sign
             if state["status"] == "done":
                 result = service.store.result(identity, job["job_id"])
                 response = {"status": "completed", "job_id": job["job_id"], "output_name": "render.png", "manifest": result["manifest"]}
-                for name, field in (("render.png", "png_base64"), ("render.blend", "blend_base64")):
+                from .artifacts import FIELDS
+                for name, field in FIELDS.items():
                     if any(a["name"] == name for a in result["artifacts"]):
                         path, _ = service.artifact(identity, job["job_id"], name)
                         response[field] = base64.b64encode(path.read_bytes()).decode()

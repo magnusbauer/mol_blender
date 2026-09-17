@@ -31,7 +31,7 @@ controller_image = (modal.Image.debian_slim(python_version="3.11")
     .env(shared_env).add_local_dir(package, "/opt/blender_render", copy=True))
 
 renderer_image = (modal.Image.debian_slim(python_version="3.11")
-    .apt_install("curl", "xz-utils", "libgl1", "libegl1", "libx11-6", "libxi6", "libxrender1", "libxfixes3", "libxxf86vm1", "libxkbcommon0", "libsm6", "libice6", "libglib2.0-0", "libfontconfig1", "libxrandr2", "libxinerama1", "libxcursor1", "libwayland-client0", "libpulse0")
+    .apt_install("ffmpeg", "curl", "xz-utils", "libgl1", "libegl1", "libx11-6", "libxi6", "libxrender1", "libxfixes3", "libxxf86vm1", "libxkbcommon0", "libsm6", "libice6", "libglib2.0-0", "libfontconfig1", "libxrandr2", "libxinerama1", "libxcursor1", "libwayland-client0", "libpulse0")
     .env(shared_env))
 for filename in ("__init__.py", "config.py", "engine.py", "runtime.lock.json", "runtime-requirements.txt", "runtime_install.py", "runtime_initialize.py"):
     renderer_image = renderer_image.add_local_file(package / filename, "/opt/blender_render/" + filename, copy=True)
@@ -61,7 +61,7 @@ class GPUWorker:
     @modal.enter()
     def start(self):
         from blender_render.worker_http import create_worker
-        self.server, self.thread = start_http(create_worker(os.environ['BLENDER_RENDER_WORKER_TOKEN'], timeout=JOB_TIMEOUT, max_atoms=100000, max_bytes=50*1024**2))
+        self.server, self.thread = start_http(create_worker(os.environ['BLENDER_RENDER_WORKER_TOKEN'], timeout=JOB_TIMEOUT, allow_animation=PERSONAL, max_atoms=100000, max_bytes=50*1024**2))
 
     @modal.exit()
     def stop(self):
@@ -136,7 +136,7 @@ def create_gateway():
     if PERSONAL:
         policy = replace(policy, budget_usd=float(os.environ['BLENDER_RENDER_COMPUTE_BUDGET']),
             expires_at=float(os.environ['BLENDER_RENDER_CREDITS_EXPIRE']), max_job_seconds=JOB_TIMEOUT,
-            daily_jobs=10)
+            daily_jobs=10, allow_animation=True)
     elif not PUBLIC:
         policy = replace(policy, quota_exempt_owners=('github:development',))
     if APP_NAME == 'blender-render-beta':

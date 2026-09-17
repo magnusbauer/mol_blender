@@ -5,6 +5,7 @@ import hashlib
 import json
 import logging
 import shutil
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -96,6 +97,7 @@ def _prepare_style_doc(request_doc: dict[str, Any]) -> tuple[str, dict[str, Any]
 
 
 def _process_render_request(*, request_id: str, request_doc: dict[str, Any], state: RenderServerState) -> dict[str, Any]:
+    started = time.monotonic()
     state.log(f"request-validate id={request_id}")
     payload = request_doc.get("payload")
     if not isinstance(payload, dict):
@@ -106,6 +108,11 @@ def _process_render_request(*, request_id: str, request_doc: dict[str, Any], sta
     preset, style_doc = request_doc.get("preset", ""), request_doc["style_doc"]
     state.log(f"request-style-ready id={request_id} preset={preset or '<style_doc>'}")
 
+    animation = style_doc['output'].get('animation')
+    animation_encoder = None
+    if animation and animation.get('mode') != 'none':
+        from .animation import encoder
+        animation_encoder = encoder()  # Fail before GPU work on this execution host.
     keep_temp = _to_bool(request_doc.get("keep_temp", False))
     job_timeout_raw = request_doc.get("job_timeout_seconds")
     job_timeout = state.default_job_timeout
@@ -115,6 +122,7 @@ def _process_render_request(*, request_id: str, request_doc: dict[str, Any], sta
         except Exception:
             job_timeout = state.default_job_timeout
 
+    deadline = started + job_timeout
     run_id_raw = payload.get("run_id")
     run_id = str(run_id_raw).strip() if isinstance(run_id_raw, str) and run_id_raw.strip() else request_id
 
@@ -161,6 +169,8 @@ def _process_render_request(*, request_id: str, request_doc: dict[str, Any], sta
         used_structure = structure_path
 
         def _submit_render_with_structure(structure_file: Path) -> dict[str, Any]:
+            if time.monotonic() >= deadline or (state.cancelled and state.cancelled()):
+                raise WorkerError("Render cancelled or execution deadline expired before dispatch")
             _bridge_runner._write_run_manifest(
                 run_manifest_path,
                 payload,
@@ -173,7 +183,7 @@ def _process_render_request(*, request_id: str, request_doc: dict[str, Any], sta
                 style_json=style_json_path,
                 output_png=output_png,
                 run_manifest=run_manifest_path,
-                timeout=job_timeout,
+                timeout=max(.001, deadline - time.monotonic()),
                 **({'expected_engine': request_doc['expected_engine'],
                     'required_capabilities': request_doc['render_spec']['required_capabilities']}
                    if 'expected_engine' in request_doc else {}),
@@ -213,9 +223,21 @@ def _process_render_request(*, request_id: str, request_doc: dict[str, Any], sta
         if preset_gate_target:
             _bridge_runner._enforce_preset_1_backend_gates(manifest=manifest_doc, manifest_path=run_manifest_path)
 
+        animation_artifacts = {}
+        if animation_encoder:
+            from .animation import unpack, encode
+            archive = output_png.with_suffix('.frames.zip')
+            with unpack(archive) as (frames, metadata):
+                for extension in (('mp4', 'gif') if animation.get('gif') else ('mp4',)):
+                    path = output_png.with_suffix('.' + extension)
+                    encode(frames, metadata, path, executable=animation_encoder,
+                           deadline=deadline, cancelled=state.cancelled)
+                    animation_artifacts[extension + '_base64'] = base64.b64encode(path.read_bytes()).decode('ascii')
+            animation_artifacts['frames_base64'] = base64.b64encode(archive.read_bytes()).decode('ascii')
         png_base64 = base64.b64encode(output_png.read_bytes()).decode("ascii")
 
         response = {
+            **animation_artifacts,
             "status": "completed",
             "mode": "server",
             "request_id": request_id,

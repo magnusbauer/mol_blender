@@ -328,6 +328,13 @@ def validate_style_document(style_doc: dict[str, Any]) -> dict[str, Any]:
     for path, direction in gradients:
         if isinstance(direction, list) and direction and all(isinstance(v, (int, float)) for v in direction) and not any(direction):
             errors.append(f"{path} must be nonzero")
+    output = style_doc.get("output", {})
+    if not errors and isinstance(output, dict) and "animation" in output:
+        from .animation import normalize
+        try:
+            normalize(output["animation"], output)
+        except ValueError as exc:
+            errors.append(str(exc))
     if errors:
         raise StyleValidationError("Style JSON validation failed:\n" + "\n".join("- " + e for e in errors))
     return style_doc

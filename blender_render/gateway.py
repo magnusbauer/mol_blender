@@ -109,10 +109,12 @@ class GatewayBackend:
             if not result['complete']:
                 raise TransferPending('child_transfer_pending')
             response = {'status':'completed', 'manifest':result['manifest'], 'runtime_seconds':None, 'timings':[]}
-            for name, key in (('render.png', 'png_base64'), ('render.blend', 'blend_base64')):
+            from .artifacts import FIELDS
+            for name, key in FIELDS.items():
                 if name in result['outputs']:
                     response[key] = base64.b64encode(Path(result['outputs'][name]).read_bytes()).decode()
-            if 'png_base64' not in response or request.get('save_blend') and 'blend_base64' not in response:
+            from .animation import required_names
+            if any(FIELDS[name] not in response for name in required_names(request.get('style_doc', {}))):
                 raise TransferPending('child_transfer_pending')
             return response
         except RestartRequired:

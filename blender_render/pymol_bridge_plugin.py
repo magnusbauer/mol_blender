@@ -23,6 +23,8 @@ _PACKAGE_ROOT = str(Path(globals().get("__script__", __file__)).resolve().parent
 if _PACKAGE_ROOT not in sys.path:
     sys.path.insert(0, _PACKAGE_ROOT)
 
+from blender_render.artifacts import MEDIA, destination
+from blender_render.pymol_movie import movie_export as blender_movie_export
 from blender_render.export import _normalize_cli_string, _parse_bool, build_render_payload
 
 
@@ -309,11 +311,7 @@ def _check_destination(path: Path) -> None:
 
 
 def _implicit_targets(output: Path, blend_output: Path | None) -> set[str]:
-    targets = {
-        str(output),
-        str(output.with_suffix(".blend")),
-        str(output.with_suffix(".manifest.json")),
-    }
+    targets = {str(destination(output, name)) for name in MEDIA}
     if blend_output is not None:
         targets.add(str(blend_output))
     return targets
@@ -1137,11 +1135,7 @@ def _descriptor_map(result: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
         raise ValueError("Receipt-backed delivery did not return artifact verification descriptors")
     descriptors: dict[str, dict[str, Any]] = {}
     for item in items:
-        if not isinstance(item, dict) or item.get("name") not in {
-            "render.png",
-            "render.blend",
-            "manifest.json",
-        }:
+        if not isinstance(item, dict) or item.get("name") not in MEDIA:
             raise ValueError("Receipt-backed delivery returned an invalid artifact descriptor")
         name = item["name"]
         if name in descriptors:
@@ -1180,11 +1174,7 @@ def _verify_delivery(task: _RenderTask, result: Any) -> dict[str, Any]:
     descriptors = _descriptor_map(result)
     safe_outputs: dict[str, str] = {}
     integrity_failure = False
-    expected = {
-        "render.png": task.output,
-        "render.blend": task.output.with_suffix(".blend"),
-        "manifest.json": task.output.with_suffix(".manifest.json"),
-    }
+    expected = {name: destination(task.output, name) for name in MEDIA}
     for name, raw_path in outputs.items():
         if name not in expected or name not in descriptors:
             raise ValueError("Receipt-backed delivery returned an unexpected output")
@@ -1225,7 +1215,7 @@ def _verify_delivery(task: _RenderTask, result: Any) -> dict[str, Any]:
     missing = [
         str(name)
         for name in result.get("missing_required", [])
-        if str(name) in {"render.png", "render.blend", "manifest.json"}
+        if str(name) in MEDIA
     ]
     required = set() if result.get("_injected_legacy_test_double") else set(task.required_outputs)
     required.update(name for name, item in descriptors.items() if item["required"])
@@ -1546,7 +1536,18 @@ def _result_for_task(
     except Exception as exc:
         raise _public_client_error(exc, task, fallback="artifact_unavailable") from None
     presentation = "not_attempted"
-    if "render.png" in delivered["outputs"]:
+    if delivered['complete'] and 'frames.zip' in delivered['outputs']:
+        from blender_render.pymol_movie import remember, load_movie
+        archive = Path(delivered['outputs']['frames.zip'])
+        try:
+            remember(cmd_obj, archive)
+            if present and task.presentation_status != 'inline_preview':
+                presentation = load_movie(cmd_obj, archive)
+            elif present:
+                presentation = 'inline_preview'
+        except Exception:
+            presentation = 'fallback_path'
+    elif "render.png" in delivered["outputs"] and "frames.zip" not in task.required_outputs and "frames.zip" not in delivered["artifacts"]:
         _remaining_timeout(deadline, task, next_action="open_output_path")
         presentation = _present_verified(
             cmd_obj,
@@ -1612,6 +1613,11 @@ def bridge_render(
     operation_key="",
     rerender=0,
     admission_timeout=30,
+    animation="",
+    duration="",
+    fps="",
+    rock_angle="",
+    gif="",
     **legacy,
 ):
     """Submit one operation; omitted ``blocking`` preserves synchronous history."""
@@ -1688,18 +1694,29 @@ def bridge_render(
     if str(transparent_background).strip():
         options["transparent_background"] = _parse_bool(transparent_background)
 
+    if text(animation):
+        options['animation'] = text(animation)
+    for key, value, convert in (('duration', duration, float), ('fps', fps, int), ('rock_angle', rock_angle, float)):
+        if str(value).strip():
+            options[key] = convert(value)
+    if str(gif).strip():
+        options['gif'] = _strict_bool(gif, 'gif')
     handle = "pymol-" + uuid.uuid4().hex[:12]
     logical_key = text(operation_key) or handle
     _parse_identifier(logical_key, "operation_key", operation=True)
     output, default_output = _output_path(output_dir, output_name)
-    if blend_destination in {output, output.with_suffix(".manifest.json")}:
-        raise ValueError("blend_output must not overlap the PNG or manifest destination")
+    if blend_destination in {destination(output, name) for name in MEDIA if name != "render.blend"}:
+        raise ValueError("blend_output must not overlap another artifact destination")
     _check_destination(output)
     _check_destination(output.with_suffix(".blend"))
     _check_destination(output.with_suffix(".manifest.json"))
+    for name in ("render.mp4", "render.gif", "frames.zip"):
+        _check_destination(destination(output, name))
     if blend_destination is not None:
         _check_destination(blend_destination)
 
+    from blender_render.spec import resolve_options
+    from blender_render.animation import required_names
     task = _RenderTask(
         handle=handle,
         profile=selected,
@@ -1707,9 +1724,7 @@ def bridge_render(
         output=output,
         operation_key=logical_key,
         blend_output=blend_destination,
-        required_outputs=(
-            ("render.png", "render.blend") if options.get("save_blend") else ("render.png",)
-        ),
+        required_outputs=("render.png", "render.blend") if options.get("save_blend") else ("render.png",),
         auto_preview=preview_value,
     )
     qualify_default = not blocking_value and default_output
@@ -1722,6 +1737,8 @@ def bridge_render(
         else:
             cmd = _self
         payload = build_render_payload(cmd, text(selection), int(state), include_color_hints=True)
+        if any(key in options for key in ('animation', 'duration', 'fps', 'rock_angle', 'gif')) or options.get('style_doc', {}).get('output', {}).get('animation') or options.get('overrides', {}).get('output', {}).get('animation'):
+            task.required_outputs = tuple(required_names(resolve_options(options, payload)['style_doc']))
         task.request_digest = _request_digest(payload, options)
         admitted = _admit_submission(
             task,
@@ -1770,6 +1787,9 @@ def bridge_render(
         from blender_render.client import IncompleteResultError
 
         raise IncompleteResultError(result)
+    if 'frames.zip' in result['outputs']:
+        print(json.dumps(result, sort_keys=True))
+        return result
     print(str(task.output))
     return str(task.output)
 
@@ -1893,13 +1913,9 @@ def _retarget_task_if_requested(
         candidate = _qualified_output(candidate, identity)
     if candidate == task.output:
         return
-    if task.blend_output in {candidate, candidate.with_suffix(".manifest.json")}:
-        raise ValueError("The recovery PNG destination overlaps the explicit Blender scene")
-    for target in (
-        candidate,
-        candidate.with_suffix(".blend"),
-        candidate.with_suffix(".manifest.json"),
-    ):
+    if task.blend_output in {destination(candidate, name) for name in MEDIA if name != "render.blend"}:
+        raise ValueError("The recovery artifact destination overlaps the explicit Blender scene")
+    for target in (destination(candidate, name) for name in MEDIA):
         _check_destination(target)
     # _reserve writes the merged same-operation target set under its file lock.
     # Update the live task only after that durable reservation succeeds.
@@ -2157,6 +2173,7 @@ _PUBLIC_COMMANDS = (
     ("blender_render_result", bridge_result),
     ("blender_render_cancel", bridge_cancel),
     ("blender_render_recover", bridge_recover),
+    ("blender_movie_export", blender_movie_export),
 )
 
 
@@ -2171,7 +2188,7 @@ def _registered_function(cmd_obj: Any, name: str):
 
 
 def register_plugin(cmd_obj=None):
-    """Register exactly five commands without duplicating PyMOL help tables."""
+    """Register render lifecycle and movie export commands without duplicating PyMOL help tables."""
     if cmd_obj is None:
         from pymol import cmd as cmd_obj
     marker_name = "_blender_render_d3_commands"

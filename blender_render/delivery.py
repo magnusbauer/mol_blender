@@ -8,6 +8,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 from .config import config_root
+from .artifacts import MEDIA, destination
 
 
 def _atomic(path, data):
@@ -68,7 +69,7 @@ def _inventory_identity(items):
         raise ValueError('Invalid artifact inventory')
     identities = {}
     for item in items:
-        if not isinstance(item, dict) or item.get('name') not in {'render.png', 'render.blend', 'manifest.json'}:
+        if not isinstance(item, dict) or item.get('name') not in MEDIA:
             raise ValueError('Invalid artifact name')
         name = item['name']
         if name in identities:
@@ -158,9 +159,9 @@ def _recover(client, job_id, output, receipt_path, *, before_ack=None, strict_ac
     destinations = {}
     for item in receipt['artifacts']:
         name = item['name']
-        if name not in {'render.png', 'render.blend', 'manifest.json'}:
+        if name not in MEDIA:
             raise ClientError('Unexpected artifact name')
-        destinations[name] = output if name == 'render.png' else output.with_suffix('.blend' if name == 'render.blend' else '.manifest.json')
+        destinations[name] = destination(output, name)
     if len(set(destinations.values())) != len(destinations):
         raise ClientError('Output paths overlap; choose a PNG filename')
     _atomic(receipt_path, json.dumps(receipt).encode())

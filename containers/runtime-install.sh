@@ -18,7 +18,7 @@ Check-Valid-Until: no
 SOURCES
 apt-get update
 apt-get install -y --no-install-recommends \
-  ca-certificates curl xz-utils python3-pymol \
+  ca-certificates curl xz-utils python3-pymol ffmpeg \
   libgl1 libegl1 libx11-6 libxi6 libxrender1 libxfixes3 libxxf86vm1 \
   libxkbcommon0 libsm6 libice6 libglib2.0-0 libfontconfig1 libxrandr2 \
   libxinerama1 libxcursor1 libwayland-client0 libpulse0

@@ -22,7 +22,7 @@ CAPABILITIES = frozenset(('representation.cartoon', 'representation.ribbon', 're
     'material.color_gradient', 'material.fog_glow', 'material.attribute_color',
     'material.uniform_polymer_color', 'material.edge_highlight', 'geometry.edge_rounding',
     'geometry.element_palette', 'world.directional_gradient', 'world.separate_illumination',
-    'camera.depth_of_field', 'camera.reference_framing'))
+    'camera.depth_of_field', 'camera.reference_framing', 'animation.camera_orbit', 'encoding.ffmpeg'))
 MESSAGES = {
     'engine_build_mismatch':'Worker engine build does not match the admitted execution.',
     'engine_protocol_mismatch':'Worker engine protocol is incompatible.',

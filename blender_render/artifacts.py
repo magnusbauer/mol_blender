@@ -11,7 +11,16 @@ import shutil
 from pathlib import Path
 
 MEDIA = {'render.png': 'image/png', 'render.blend': 'application/octet-stream',
-         'manifest.json': 'application/json'}
+         'manifest.json': 'application/json', 'render.mp4': 'video/mp4',
+         'render.gif': 'image/gif', 'frames.zip': 'application/zip'}
+SUFFIXES = {'render.png': '.png', 'render.blend': '.blend', 'manifest.json': '.manifest.json',
+            'render.mp4': '.mp4', 'render.gif': '.gif', 'frames.zip': '.frames.zip'}
+FIELDS = {'render.png': 'png_base64', 'render.blend': 'blend_base64',
+          'render.mp4': 'mp4_base64', 'render.gif': 'gif_base64', 'frames.zip': 'frames_base64'}
+
+def destination(output, name):
+    return Path(output) if name == 'render.png' else Path(output).with_suffix(SUFFIXES[name])
+
 
 
 def register_root(db, path):
@@ -60,13 +69,15 @@ def delete_all_artifact_copies(db, identifier):
     return files, size
 
 
-def inventory(records, expiry, scene, *, known=True):
+def inventory(records, expiry, scene, *, known=True, required=()):
     by_name = {a['name']: a for a in records if a.get('name') in MEDIA}
-    names = set(by_name) | {'render.png'} | ({'render.blend'} if scene else set())
+    required = set(required) | {'render.png'} | ({'render.blend'} if scene else set())
+    required.update(name for name in by_name if name in ('render.mp4', 'render.gif', 'frames.zip'))
+    names = set(by_name) | required
     return {'complete': known, 'artifacts': [
         {'name': name, 'sha256': by_name.get(name, {}).get('sha256'),
          'size': by_name.get(name, {}).get('size'), 'mime_type': by_name.get(name, {}).get('mime_type', MEDIA[name]),
-         'required': name == 'render.png' or (name == 'render.blend' and scene),
+         'required': name in required,
          'expires_at': expiry}
         for name in MEDIA if name in names]}
 

@@ -6,7 +6,8 @@ GPL-3.0-or-later, as marked in their file headers. The wheel contains both
 components and declares `MIT AND GPL-3.0-or-later`.
 
 GPL scripts: `blender_custom_render.py`, `geometry.py`, `paint.py`,
-`runtime_initialize.py`, and `runtime_probe.py`, all under `blender_render/`.
+`runtime_initialize.py`, `runtime_probe.py`, `animation_blender.py`, and
+`rocking_blender.py`, all under `blender_render/`.
 The full GPL text is in `LICENSES/GPL-3.0-or-later.txt`. This separation follows
 [Blender's published guidance for Python scripts](https://www.blender.org/support/faq/).
 It does not relicense upstream dependencies, bundled node assets, or their
@@ -52,3 +53,10 @@ setup is explicitly requested.
 Example structures are obtained from the RCSB Protein Data Bank and carry their
 accession and citation in the example manifest. User-uploaded structures and
 reference images are not included in the public source distribution.
+
+Animation encoding uses the system FFmpeg executable with libx264. Container
+builds install Debian's FFmpeg package, retain `/usr/share/doc` copyright files,
+and record exact binary/source versions in the existing Debian inventory.
+Corresponding FFmpeg and x264 sources must accompany distributed container
+releases, using the same Debian snapshot as the build. FFmpeg/libx264 are not
+embedded in the Python wheel. Pillow retains its upstream license and notices.

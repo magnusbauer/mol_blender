@@ -4288,6 +4288,13 @@ def _render(args: argparse.Namespace) -> tuple:
         _render_raw_view(scene)
     else:
         bpy.ops.render.render(animation=False, write_still=True)
+    animation_metadata = None
+    animation_cfg = style_doc['output'].get('animation')
+    if animation_cfg and animation_cfg.get('mode') != 'none':
+        from blender_render.animation import normalize
+        from blender_render.animation_blender import render as render_animation
+        animation_metadata = render_animation(scene, camera, light_target, output_png,
+                                             normalize(animation_cfg, style_doc['output']))
     rendered = time.monotonic()
     blend_output = _resolve_blend_output_path(style_doc, output_png)
     if blend_output is not None:
@@ -4310,6 +4317,8 @@ def _render(args: argparse.Namespace) -> tuple:
             manifest_doc = {}
             if run_manifest_path.is_file():
                 manifest_doc = _load_json(run_manifest_path)
+            if animation_metadata:
+                manifest_doc['animation'] = animation_metadata
             manifest_doc["polymer_backend"] = runtime_polymer_backend
             manifest_doc["blender_version"] = bpy.app.version_string
             try:

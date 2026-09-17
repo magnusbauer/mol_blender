@@ -388,7 +388,7 @@ def create_http(service, *, auth, downloads, converter, widget_origin=None, trus
             if artifact['name'] == 'render.png':
                 artifact['preview_url'] = downloads.url(identity, job_id, artifact['name'], preview=True)
                 result['preview_url'] = artifact['preview_url']
-        labels = {'render.png': 'Download PNG', 'render.blend': 'Download Blender scene', 'manifest.json': 'Download manifest'}
+        labels = {'render.png': 'Download PNG', 'render.blend': 'Download Blender scene', 'manifest.json': 'Download manifest', 'render.mp4': 'Download MP4', 'render.gif': 'Download GIF', 'frames.zip': 'Download movie frames'}
         links = ['[' + labels[a['name']] + '](' + a['download_url'] + ')' for a in result['artifacts']]
         if result.get('preview_url'):
             links.insert(0, f"[View PNG preview]({result['preview_url']})")

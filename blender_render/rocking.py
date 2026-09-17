@@ -8,7 +8,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import math
 from pathlib import Path
 import shutil
 import subprocess
@@ -16,16 +15,16 @@ import tempfile
 
 
 def angles(frames: int, amplitude: float) -> list[float]:
-    if frames < 4 or not math.isfinite(amplitude) or not 0 < amplitude <= 45:
-        raise ValueError("Use at least 4 frames and an amplitude in (0, 45] degrees")
-    # Exclude the duplicated endpoint: playback supplies the wrap to frame zero.
-    return [amplitude * math.sin(2 * math.pi * i / frames) for i in range(frames)]
+    from .animation import normalize, angles as motion_angles
+    config = normalize(dict(mode='rock', duration=frames/24, fps=24, rock_angle=amplitude),
+                       dict(width=2, height=2))
+    return motion_angles(config)
 
 
 def spin_angles(frames: int) -> list[float]:
-    if frames < 4:
-        raise ValueError("Use at least 4 frames")
-    return [360 * i / frames for i in range(frames)]
+    from .animation import normalize, angles as motion_angles
+    config = normalize(dict(mode='360', duration=frames/24, fps=24), dict(width=2, height=2))
+    return motion_angles(config)
 
 
 def digest(path: Path) -> str:
@@ -33,14 +32,10 @@ def digest(path: Path) -> str:
 
 
 def encode(ffmpeg: str, frames: Path, output: Path, fps: int, name: str = "rocking") -> None:
-    source = [ffmpeg, "-nostdin", "-v", "error", "-framerate", str(fps),
-              "-i", str(frames / "%04d.png")]
-    subprocess.run([*source, "-c:v", "libx264", "-crf", "18", "-pix_fmt", "yuv420p",
-                    "-movflags", "+faststart", str(output / f"{name}.mp4")], check=True)
-    subprocess.run([*source, "-filter_complex",
-                    "split[a][b];[a]palettegen=stats_mode=full[p];"
-                    "[b][p]paletteuse=dither=sierra2_4a", "-loop", "0",
-                    str(output / f"{name}.gif")], check=True)
+    from .animation import encode as encode_movie
+    metadata = dict(fps=fps, frames=len(list(frames.glob('*.png'))))
+    for extension in ('mp4', 'gif'):
+        encode_movie(frames, metadata, output / f'{name}.{extension}', executable=ffmpeg)
 
 
 def main(argv=None):
@@ -73,9 +68,13 @@ def main(argv=None):
     bundle = validate_payload_document(json.loads(args.bundle.read_text()))
     if not bundle.get("cif_text") or not bundle.get("dss", {}).get("ran"):
         parser.error("A CIF bundle with completed PyMOL DSS assignment is required")
-    resolved = resolve_options({"preset": args.preset, "preserve_view": False,
-        "overrides": {"output": {"width": args.width, "height": args.height,
-                                  "samples": args.samples, "save_blend": False}}}, bundle)
+    options = {"preset": args.preset, "preserve_view": False,
+        "animation": "360" if args.motion == "spin" else "rock",
+        "duration": args.frames / args.fps, "fps": args.fps, "gif": True,
+        "width": args.width, "height": args.height, "samples": args.samples}
+    if args.motion == 'rocking':
+        options['rock_angle'] = amplitude
+    resolved = resolve_options(options, bundle)
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=False)
     package = Path(__file__).resolve().parent
@@ -99,7 +98,9 @@ def main(argv=None):
                        f"PYTHONPATH={package.parent}:/opt/runtime/site", str(args.image.resolve()), *command]
         with (output / "render.log").open("w") as log:
             subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, check=True)
-        encode(ffmpeg, work / "frames", output, args.fps, args.motion)
+        from .animation import export
+        for extension in ('mp4', 'gif'):
+            export(output / 'render.frames.zip', output / f'{args.motion}.{extension}', executable=ffmpeg)
         manifest = json.loads((output / "manifest.json").read_text())
         manifest.update(animation={"kind": "camera_orbit", "axis": "initial_camera_up",
             "motion": args.motion,
@@ -108,9 +109,9 @@ def main(argv=None):
             "loop": ("constant speed" if args.motion == "spin" else "sinusoidal") + ", no duplicate endpoint"},
             bundle_sha256=digest(args.bundle), render_spec=resolved["render_spec"],
             source_sha256={name: digest(package / name) for name in
-                ("rocking.py", "rocking_blender.py", "blender_custom_render.py")},
+                ("rocking.py", "rocking_blender.py", "animation.py", "animation_blender.py", "blender_custom_render.py")},
             artifacts={name: digest(output / name) for name in
-                (f"{args.motion}.mp4", f"{args.motion}.gif", "render.png", "resolved-style.json")})
+                (f"{args.motion}.mp4", f"{args.motion}.gif", "render.png", "render.frames.zip", "resolved-style.json")})
         (output / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     print(output)
 

@@ -17,7 +17,7 @@ from . import core
 from .presets import DEFAULT_PRESET, PRESET_STYLE_FILENAMES, preset_id, required_capabilities
 
 OPTION_KEYS = frozenset({"preset", "style_doc", "overrides", "rough", "raw_view", "color_follow", "save_blend",
-                        "width", "height", "samples", "transparent_background", "preserve_view", "keep_temp"})
+                        "width", "height", "samples", "transparent_background", "preserve_view", "keep_temp", "animation", "duration", "fps", "rock_angle", "gif"})
 _FLAGS = ("rough", "raw_view", "color_follow", "save_blend", "transparent_background", "preserve_view", "keep_temp")
 
 
@@ -76,7 +76,7 @@ def _check_options(options: dict) -> None:
 
 
 def resolve_options(options: dict, payload: dict, *, public: bool = False, timeout: int = 600,
-                    preset_definition: PresetDefinition | None = None) -> dict:
+                    preset_definition: PresetDefinition | None = None, allow_animation: bool = False) -> dict:
     """Return the existing worker request shape plus immutable-spec metadata.
 
     No files, processes, services or allocations are created here. The caller
@@ -141,6 +141,10 @@ def resolve_options(options: dict, payload: dict, *, public: bool = False, timeo
         style["renderer"]["transparent_background"] = options["transparent_background"]
     if "color_follow" in options:
         style = core._apply_color_follow_override(style, options["color_follow"])
+    from .animation import resolve as resolve_animation
+    animation = resolve_animation(options, output)
+    if public and animation and not allow_animation:
+        raise ValueError("Shared hosted animation is not enabled")
     # Validate the requested resources before rough-mode performance reductions.
     if public:
         if output.get("raw_view"):
