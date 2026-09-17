@@ -1,5 +1,61 @@
 # Blender Render implementation progress
 
+## General preset animation and PyMOL movies — 2026-09-16
+
+Bounded feature branch `codex/preset-animation`, based on the prior animation
+branch and targeting `codex/milestone-d`. No deployment or release is included.
+See [animation commands and behavior](../animation.md).
+
+- Shared validated/hashed RenderSpec accepts `animation=none|rock|360`, duration,
+  FPS, rocking amplitude and optional GIF. One scene and camera orbit serve every
+  preset and execution profile. Still defaults and preset 1 remain unchanged.
+- Owned queued jobs return preview PNG, MP4, lossless frame archive, optional GIF
+  and scene. Required outputs, checksums, cancellation, deadlines, durable
+  recovery and destination reservations cover the new artifacts. Shared hosted
+  animation is disabled; personal paid policy preserves budget reservations.
+- Complete verified archives populate PyMOL's movie image cache on its GUI thread.
+  `auto_preview=0` leaves the movie unchanged. `blender_movie_export` encodes the
+  retained frames without compute submission. PNG alpha is retained; MP4/GIF
+  composite onto white. Native image-cache export is not molecular keyframing.
+
+Executed acceptance on Linux:
+
+- Full `python -m pytest`: **1302 passed**. A frozen local source snapshot avoids
+  shared-filesystem latency; an intermediate run changed during execution was
+  correctly rejected by the engine seal and discarded. Final snapshot includes
+  recovery, archive safety, capability rejection, partial downloads, required
+  outputs, output collisions, auto-preview and asynchronous result tests.
+- Externally built wheel installed outside the checkout: **49 tests passed**,
+  including real FFmpeg MP4/GIF encoding, alpha compositing and loop checks.
+- Installed-wheel GPU acceptance: **14/14 built-in presets**, each one queued
+  four-frame 320 × 240 animation at eight samples, MP4 and GIF plus verified
+  lossless archive. Preset 1 rocks; the other presets spin. One persistent local
+  Apptainer worker used Blender 5.0.1, Molecular Nodes 4.5.10 and CUDA RTX 4080.
+  Public sources only: 1SPS, 8AW3, 8EA6, 7PZB, 1AZM and 8AA5. A further
+  transparent-background neon animation passed with zero-alpha PNG pixels.
+  Validated engine build: `ee0d8b134b59b49592e2eea22be47f5e9d17224c2c9c401611ccb5304a6a0d23`.
+- Cartoon, frosted/surface and close-up frames were visually inspected at initial
+  and quarter-turn views. Close-up cropping is retained intentionally; the orbit
+  does not reframe. These are low-resolution correctness checks, not final-quality
+  aesthetic approval.
+- Real PyMOL 3.1.8 Qt GUI under Xvfb: replaced a previous movie, playback advanced
+  from frame one to frame two, preserved molecular objects/view, and native
+  `mpng` output matched Blender RGB pixels exactly. Reloading the cache before
+  native `movie.produce` produced MP4; its intermediate PNGs also matched exactly.
+  Plugin MP4/GIF re-export passed without another render. Native export may clear
+  the cache, so re-present before another native export.
+
+Reproduction helpers: `scripts/validate_animation.py` (public gallery and installed
+wheel) and `scripts/validate_pymol_movie.py` (real PyMOL GUI and an existing public
+frame archive). Generated artifacts/logs remain ignored, outside tracked sources.
+Existing unrelated README edits and the user's research structure are excluded.
+
+Outstanding executed platform gates: actual Mac PyMOL, remote SSH/Slurm HPC and
+personal Modal animation execution; no claim is made for those environments.
+Shared hosted animation, service deployment, release and publisher review remain
+out of scope.
+
+
 ## Neon duplex 360° spin — 2026-09-16
 
 Follow-up on the same branch adds `--motion spin` to the offline utility.

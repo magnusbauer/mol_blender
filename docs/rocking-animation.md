@@ -1,5 +1,9 @@
 # Offline rocking and 360° spin animation
 
+For preset-independent queued animations and PyMOL playback/export, see
+[Preset animations](animation.md). This offline command is a compatibility adapter
+for the shared renderer and retains a `.frames.zip` archive for later export.
+
 The trusted developer utility builds a scene with the shared renderer, then
 orbits its camera around the molecular bounds along the initial camera-up axis.
 Geometry, materials, lighting, camera projection and lens stay fixed. A sinusoidal
