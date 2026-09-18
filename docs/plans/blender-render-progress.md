@@ -15,7 +15,12 @@ Executed **1,309 repository tests** and **157 installed-wheel tests outside the
 checkout**. Regression covers expired content reuse, explicit replacement, stable
 retry without another attachment download/job, and repeated explicit operations.
 The tests also check strict flags, default identity stability and no style leakage.
-Actual ChatGPT selection of the new flag and inline display remain external gates.
+Owner-only rollout completed through drain/stop/resume. Health and OAuth resource
+discovery returned 200; unauthenticated MCP returned 401. Live installed request
+validation accepts `rerender=true` for neon preselection without submitting work.
+Engine: `b2e8b3f67c6fbceb886ab9ebdf11a49a692b3b31044ac1d07b16976e374f9191`.
+Allowlist and lifetime accounting were preserved. Actual ChatGPT selection of the
+new flag and inline display remain external gates.
 
 ## ChatGPT embedded preview viewer — 2026-09-18
 
