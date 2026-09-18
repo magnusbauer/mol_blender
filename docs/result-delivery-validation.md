@@ -6,6 +6,18 @@ preview and native original-file handoff. Returning a reference does not confirm
 host storage; cleanup still follows actual transfer or expiry. A fresh ChatGPT
 import/display check is required for this change.
 
+## September 18 inline-delivery rollout
+
+The staged inline-delivery build deployed successfully to the existing owner-only
+service after retrying the provider billing blocker. Health and OAuth discovery
+passed; unauthenticated MCP access was rejected. Existing ownership and lifetime
+accounting were preserved. No GPU render was submitted in this deployment check.
+Repository tests: 1,303 passed; installed-wheel focused tests: 154 passed.
+Actual ChatGPT inline display, native attachment import, and retention after
+reopening remain unverified. Deployment health does not establish those UI gates.
+
+## Historical September 7 link-based validation
+
 Validated on 2026-09-07 against the private, owner-only Modal service.
 
 The user's pastel `1sps_pose.pse` render completed in about 31 seconds

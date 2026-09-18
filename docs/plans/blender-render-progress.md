@@ -23,11 +23,14 @@ owner-only controller stopped cleanly with no running or queued work. Images bui
 but Modal rejected L4 function deployment: "Please add a payment method to use L4
 GPU functions." The failed replacement was stopped. Rollback of the previous app
 was also rejected because Modal requires a currently deployed app for rollback.
-The hosted ChatGPT endpoint is therefore offline pending the operator's Modal
-billing resolution. No payment method was added, no admission was broadened, and
-OAuth credentials and lifetime accounting remain in the existing secret/Volume.
-The separate lmilles PyMOL installation was not changed. The built wheel is staged
-in private operator storage for a retry after the external blocker is resolved.
+A user-requested retry later on September 18 succeeded after the external billing
+blocker cleared. The same staged wheel was deployed, and admission resumed on the
+existing URL. Executed checks: health 200 with zero queued/running jobs; OAuth
+resource and authorization-server discovery 200; unauthenticated MCP and capability
+requests rejected with 401. The owner allowlist is unchanged. Read-only inspection
+confirmed lifetime compute cap $450 and operating cap $28 were preserved, with
+operating spend $14.15 (not reset). Existing job history survived and no render was
+submitted during the retry. The separate lmilles PyMOL installation is unchanged.
 
 Actual ChatGPT attachment import, inline display, and persistence after reopening
 the conversation remain external acceptance checks. An MCP file reference alone
