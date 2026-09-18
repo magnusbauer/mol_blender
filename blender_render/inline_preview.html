@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Molecular render</title>
+<style>
+:root{color-scheme:light dark;font:14px system-ui,sans-serif}
+body{margin:0;padding:12px}img{display:block;width:100%;max-height:640px;object-fit:contain;border-radius:8px;background:#eee}img[hidden]{display:none}p{margin:0;padding:12px;color:inherit}
+</style>
+<img id="preview" alt="Blender molecular render" hidden>
+<p id="status" role="status">Waiting for the rendered image…</p>
+<script>
+const image = document.getElementById('preview');
+const status = document.getElementById('status');
+let shown = false;
+function resize() {
+  const height = document.documentElement.scrollHeight;
+  window.openai?.notifyIntrinsicHeight?.(height);
+  if (parent !== window) parent.postMessage({jsonrpc:'2.0',method:'ui/notifications/size-changed',params:{height}}, '*');
+}
+function render(envelope) {
+  if (!envelope || typeof envelope !== 'object') return;
+  // ChatGPT wraps the MCP envelope; MCP Apps sends it directly. Older
+  // ChatGPT bridges expose the hidden metadata as the value itself.
+  const result = envelope.mcp_tool_result || envelope.call_tool_result || envelope;
+  const preview = result._meta?.preview || result.preview ||
+    result.content?.find(item => item.type === 'image' && item.mimeType === 'image/png');
+  if (preview?.mimeType === 'image/png' && typeof preview.data === 'string' &&
+      preview.data.length <= 524288 && /^[A-Za-z0-9+/]+={0,2}$/.test(preview.data)) {
+    const source = 'data:image/png;base64,' + preview.data;
+    if (image.getAttribute('src') !== source) image.src = source;
+    return;
+  }
+  if (!shown && result.structuredContent) {
+    status.textContent = 'The image preview is unavailable. Rendering has not been repeated.';
+  }
+}
+image.onload = () => {
+  shown = true;
+  image.hidden = false;
+  status.hidden = true;
+  resize();
+};
+image.onerror = () => {
+  shown = false;
+  image.hidden = true;
+  status.hidden = false;
+  status.textContent = 'The image could not be displayed. Rendering has not been repeated.';
+  resize();
+};
+window.addEventListener('message', event => {
+  if (event.source !== parent || event.data?.jsonrpc !== '2.0') return;
+  const message = event.data;
+  if (message.method === 'ui/notifications/tool-result') render(message.params);
+  if (message.id === 'initialize' && message.result) {
+    parent.postMessage({jsonrpc:'2.0',method:'ui/notifications/initialized'}, '*');
+  }
+});
+window.addEventListener('openai:set_globals', event => {
+  render(event.detail?.globals?.toolResponseMetadata);
+});
+render(window.openai?.toolResponseMetadata);
+if (parent !== window) parent.postMessage({jsonrpc:'2.0',id:'initialize',method:'ui/initialize',params:{
+  appInfo:{name:'Blender Render',version:'0.2.0b1'},appCapabilities:{},protocolVersion:'2026-01-26'
+}}, '*');
+setTimeout(() => {
+  if (!shown && !image.getAttribute('src')) {
+    status.textContent = 'ChatGPT has not supplied the image to this viewer. Rendering has not been repeated.';
+    resize();
+  }
+}, 15000);
+</script>
+</html>

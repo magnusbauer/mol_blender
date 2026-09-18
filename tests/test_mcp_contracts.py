@@ -74,10 +74,10 @@ def test_chatgpt_declared_file_contract():
             assert tools['render_status'].annotations.readOnlyHint
             assert tools['render_status'].inputSchema['properties']['wait_seconds']['maximum'] == 25
             assert tools['render_result'].outputSchema
-            # Delivery must not depend on the optional widget bridge, which
-            # can remain on its loading state after a successful render.
-            assert not (tools['render_result'].meta or {}).get('ui')
-            assert 'openai/outputTemplate' not in (tools['render_result'].meta or {})
+            # The result viewer receives embedded bytes, not expiring URLs.
+            from blender_render.mcp_server import INLINE_PREVIEW_URI
+            assert tools['render_result'].meta['ui']['resourceUri'] == INLINE_PREVIEW_URI
+            assert tools['render_result'].meta['openai/outputTemplate'] == INLINE_PREVIEW_URI
             uri='ui://blender-render/result-v1.html'
             resource=await client.read_resource(uri)
             assert resource[0].mimeType == 'text/html;profile=mcp-app'

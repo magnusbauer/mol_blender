@@ -1,5 +1,21 @@
 # Blender Render implementation progress
 
+## ChatGPT embedded preview viewer — 2026-09-18
+
+A real user test showed a materialization prompt and repeated captions without an
+image. The completed job's PNG was still marked available, not delivered. The
+HTTP result now binds an image viewer and includes the existing bounded PNG in
+hidden metadata, so preview display requires no external file fetch. Native
+full-resolution attachments and cleanup are unchanged. No render was resubmitted.
+
+Executed: **1,304 repository tests passed**, **184 installed-wheel tests passed
+outside the checkout**, and six real Chromium cases passed with simulated host
+messages and no network requests. Cases cover initial data, delayed notification,
+wrapped and legacy metadata, and missing/invalid data. The old viewer stays opt-in.
+Discovery hashes were updated for the new resource and result-tool metadata.
+Actual ChatGPT display and reopen/persistence are still outstanding; a simulated
+host bridge does not satisfy those gates. See the result-delivery report.
+
 ## ChatGPT native image handoff — 2026-09-18
 
 User requested inline results without written download links. HTTPS `render_result`

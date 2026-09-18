@@ -78,7 +78,11 @@ attached PNG retains the rendered resolution and transparency. A preview failure
 returns `presentation_status="file_handoff"` and `presentation_failed` while
 preserving the file references. It cannot change render success or submit another
 render. Do not repeatedly retrieve results to fix hidden images or failed imports.
-The default flow does not use the legacy widget, which previously failed to finish
-loading in ChatGPT. Actual attachment import/display remains a separate host test.
+`render_result` now binds a dedicated image viewer. Its bounded PNG bytes travel
+in widget-only result metadata, with no network fetch or download buttons. It
+supports MCP Apps result notifications and ChatGPT's wrapped result metadata;
+missing data produces a visible error rather than an indefinite loading screen.
+The legacy URL-based widget remains opt-in. Refresh the connection after this
+metadata change. Actual ChatGPT display and retention remain separate host tests.
 
 For ChatGPT with private compute, use your lab's authenticated HTTPS gateway as described in [HPC setup](hpc.md), then package that exact private URL and its separately registered connection as described in [plugin installation and private routing](plugin-installation.md). ChatGPT cannot call a laptop's loopback stdio service directly.

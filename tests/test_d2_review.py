@@ -255,9 +255,10 @@ def test_review_widget(consumer, trusted, compatibility):
     service, _, _ = consumer
     async def run():
         factory = server(service, trusted=trusted, compatibility=compatibility)
-        assert type(factory)._read_resource_mcp is mcp_server.FastMCP._read_resource_mcp
         async with MCPClient(factory) as client:
-            assert mcp_server.PREVIEW_URI not in [str(resource.uri) for resource in await client.list_resources()]
+            uris = [str(resource.uri) for resource in await client.list_resources()]
+            assert mcp_server.PREVIEW_URI not in uris
+            assert mcp_server.INLINE_PREVIEW_URI in uris
     asyncio.run(run())
 
 

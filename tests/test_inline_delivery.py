@@ -31,6 +31,11 @@ def test_native_image_handoff_no_prose_links_and_fetch_cleanup(consumer):
     for item in result.content:
         if item.type == 'text':
             assert 'https://' not in item.text and '](' not in item.text
+    preview = result.meta['preview']
+    native = next(item for item in result.content if item.type == 'image')
+    assert preview == {'mimeType': 'image/png', 'data': native.data}
+    assert len(preview['data']) <= 524288
+    assert 'preview' not in metadata  # Widget bytes stay outside structured text.
     assert path.read_bytes() == original  # Returning a reference isn't delivery.
     # The signed native-file reference uses the normal owned download route.
     api = TestClient(create_app(service, token=TOKEN, signing_key='x' * 48,
@@ -47,3 +52,16 @@ def test_native_image_handoff_no_prose_links_and_fetch_cleanup(consumer):
     assert api.get(route).status_code == 410
     assert len(service.backend.calls) == 1
     api.close()
+
+
+def test_viewer_discovery_has_no_network_dependency(consumer):
+    import asyncio
+    from fastmcp import Client
+    from blender_render.mcp_server import INLINE_PREVIEW_URI
+    async def run():
+        async with Client(server(consumer[0])) as client:
+            resource = (await client.read_resource(INLINE_PREVIEW_URI))[0]
+            assert resource.meta['ui']['csp'] == {'connectDomains': [], 'resourceDomains': []}
+            assert 'data:image/png;base64,' in resource.text
+            assert 'download_url' not in resource.text
+    asyncio.run(run())

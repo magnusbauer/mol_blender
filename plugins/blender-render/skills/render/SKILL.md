@@ -22,7 +22,9 @@ same server policy. Status retains selected-style identity after cleanup; stop
 on `metadata_invalid` and report operator inspection. If preview generation
 returns `file_handoff` (HTTPS) or `fallback_links` (stdio) and `presentation_failed`, preserve the native attachments or verified local files
 and explain that only presentation failed. Do not retrieve again
-or rerender to recreate the preview. The legacy widget is absent by default.
+or rerender to recreate the preview. The result viewer displays embedded preview bytes without fetching artifact URLs.
+The legacy URL-based widget is absent by default. Do not repeat the render caption
+when the image viewer already displays the result.
 
 | Preset | Description |
 | --- | --- |

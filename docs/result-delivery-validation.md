@@ -6,6 +6,27 @@ preview and native original-file handoff. Returning a reference does not confirm
 host storage; cleanup still follows actual transfer or expiry. A fresh ChatGPT
 import/display check is required for this change.
 
+## September 18 viewer follow-up
+
+The user reported a file-materialization approval prompt followed by repeated
+render captions with no visible image. Read-only inspection confirmed a completed
+job whose PNG remained available, not delivered. Native image/file content alone
+did not establish display or attachment import in that ChatGPT conversation.
+
+The follow-up binds `render_result` to a new image viewer, passing the existing
+bounded PNG in hidden tool-result metadata. The viewer has no external image
+fetch, download button, or render/submission action. Both MCP Apps notifications
+and ChatGPT metadata envelopes are supported. Missing or invalid preview data
+produces an explicit error. Full-resolution attachment delivery and expiry are
+unchanged; the ChatGPT materialization permission cannot be bypassed by the app.
+
+Real Chromium with simulated host envelopes passed initial display, notification,
+wrapped metadata, legacy metadata, missing data, and invalid URL rejection, without
+network requests. This is browser execution evidence, not a ChatGPT acceptance
+check. The new viewer still requires an actual refreshed ChatGPT connection test.
+Reproduce with `scripts/validate_inline_widget.py --browser /path/to/chromium`
+using Playwright and an installed package outside the checkout.
+
 ## September 18 inline-delivery rollout
 
 The staged inline-delivery build deployed successfully to the existing owner-only
