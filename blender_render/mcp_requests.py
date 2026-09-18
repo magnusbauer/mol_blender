@@ -53,10 +53,15 @@ class HostedRenderRequest(StrictModel):
     width: int | None = Field(default=None, ge=1)
     height: int | None = Field(default=None, ge=1)
     samples: int | None = Field(default=None, ge=1)
-    transparent_background: bool | None = None
+    transparent_background: bool | None = Field(default=None, description='Omit to preserve the preset background. Set true only when the user asks for transparency.')
     save_blend: bool | None = Field(default=None, description='PNG is always requested; a Blender scene requires explicit true.')
     color_follow: bool | None = None
     rough: bool = False
+    animation: Literal['none', 'rock', '360'] | None = Field(default=None, description='One animation job, never separate still requests per frame. Omit for a still.')
+    duration: float | None = Field(default=None, gt=0, le=15)
+    fps: int | None = Field(default=None, ge=1, le=60)
+    rock_angle: float | None = Field(default=None, gt=0, le=45)
+    gif: bool | None = Field(default=None, description='Return the rendered GIF directly. Animations default to GIF, 640x360, 32 samples, 3 seconds and 12 fps; explicit settings override those defaults.')
 
     @model_validator(mode='before')
     @classmethod

@@ -46,7 +46,7 @@ def test_native_preview_and_stdio_tools(monkeypatch, tmp_path):
     async def run():
         async with MCPClient(create_stdio(compatibility=True)) as client:
             tools = {t.name:t for t in await client.list_tools()}
-            assert set(tools) == {'list_presets','list_structures','delete_structure','import_structure','render_structure','submit_render','render_status','render_result','cancel_render','available_quota','list_recent_renders','recover_render','recover_transfer'}
+            assert set(tools) == {'list_presets','preset_details','list_structures','delete_structure','import_structure','render_structure','submit_render','render_status','render_result','cancel_render','available_quota','list_recent_renders','recover_render','recover_transfer'}
             assert tools['submit_render'].annotations.idempotentHint
             assert tools['render_structure'].annotations.idempotentHint
             result = await client.call_tool('render_result',{'job_id':'job','output_path':str(path)})

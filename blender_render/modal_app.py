@@ -15,6 +15,10 @@ import modal
 PUBLIC = os.environ.get("BLENDER_RENDER_PUBLIC") == "1"
 APP_NAME = os.environ.get("BLENDER_RENDER_APP_NAME") or ("blender-render-beta" if PUBLIC else "blender-render-beta-dev")
 PERSONAL = APP_NAME not in {"blender-render-beta", "blender-render-beta-dev"}
+OWNER_ANIMATION = os.environ.get('BLENDER_RENDER_OWNER_ANIMATION', '')
+from .modal_boundaries import animation_enabled
+ALLOW_ANIMATION = animation_enabled(personal=PERSONAL, public=PUBLIC, owner=OWNER_ANIMATION,
+    allowed_users=os.environ.get('BLENDER_RENDER_ALLOWED_USERS', ''))
 JOB_TIMEOUT = int(os.environ.get("BLENDER_RENDER_JOB_TIMEOUT", "600"))
 app = modal.App(APP_NAME)
 from .modal_boundaries import package_snapshot
@@ -24,6 +28,9 @@ _package_snapshot = package_snapshot(Path(__file__).parent)
 package = _package_snapshot.__enter__()
 shared_env = {"PYTHONPATH":"/opt:/opt/runtime/site", "BLENDER_RENDER_SITE":"/opt/runtime/site", "BLENDER_RENDER_PUBLIC":"1" if PUBLIC else "0", "PYTHONUNBUFFERED":"1"}
 shared_env.update(BLENDER_RENDER_APP_NAME=APP_NAME, BLENDER_RENDER_JOB_TIMEOUT=str(JOB_TIMEOUT))
+if OWNER_ANIMATION:
+    shared_env.update(BLENDER_RENDER_OWNER_ANIMATION=OWNER_ANIMATION,
+                      BLENDER_RENDER_ALLOWED_USERS=os.environ.get('BLENDER_RENDER_ALLOWED_USERS', ''))
 
 controller_image = (modal.Image.debian_slim(python_version="3.11")
     .add_local_file(package / "service-requirements.txt", "/tmp/service-requirements.txt", copy=True)
@@ -61,7 +68,7 @@ class GPUWorker:
     @modal.enter()
     def start(self):
         from blender_render.worker_http import create_worker
-        self.server, self.thread = start_http(create_worker(os.environ['BLENDER_RENDER_WORKER_TOKEN'], timeout=JOB_TIMEOUT, allow_animation=PERSONAL, max_atoms=100000, max_bytes=50*1024**2))
+        self.server, self.thread = start_http(create_worker(os.environ['BLENDER_RENDER_WORKER_TOKEN'], timeout=JOB_TIMEOUT, allow_animation=ALLOW_ANIMATION, max_atoms=100000, max_bytes=50*1024**2))
 
     @modal.exit()
     def stop(self):
@@ -132,7 +139,7 @@ def create_gateway():
     from blender_render.service import RenderService
     from blender_render.budget import OperatingBudget
     # Development reserves $10 of its $50 allowance for builds/control/storage.
-    policy = Policy(public=True, budget_usd=450 if PUBLIC else 40)
+    policy = Policy(public=True, budget_usd=450 if PUBLIC else 40, allow_animation=ALLOW_ANIMATION)
     if PERSONAL:
         policy = replace(policy, budget_usd=float(os.environ['BLENDER_RENDER_COMPUTE_BUDGET']),
             expires_at=float(os.environ['BLENDER_RENDER_CREDITS_EXPIRE']), max_job_seconds=JOB_TIMEOUT,

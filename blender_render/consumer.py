@@ -16,7 +16,7 @@ from . import consumer_errors, consumer_records, consumer_transport
 
 SELECTION_FIELDS = ('preset', 'revision', 'hard_requirements', 'visual_brief',
                     'overrides', 'allow_low_fit_approximation')
-CONTROLS = ('width', 'height', 'samples', 'transparent_background', 'save_blend', 'color_follow', 'rough')
+CONTROLS = ('width', 'height', 'samples', 'transparent_background', 'save_blend', 'color_follow', 'rough', 'animation', 'duration', 'fps', 'rock_angle', 'gif')
 KEY_PATTERN = r'[A-Za-z0-9][A-Za-z0-9_-]{0,127}'
 
 
@@ -74,6 +74,18 @@ def normalize_request(value, *, trusted=False):
         controls = {k: value[k] for k in CONTROLS if k in value and value[k] is not None}
         from .spec import _check_options
         _check_options(controls)
+        from .animation import CONTROLS as MOTION_CONTROLS, resolve as resolve_motion
+        motion = {k: controls[k] for k in MOTION_CONTROLS if k in controls}
+        if motion:
+            if motion.get('animation', 'none') != 'none':
+                # Small interactive movies by default; explicit quality wins.
+                controls.setdefault('width', canonical['hard_requirements']['width'] or canonical['overrides'].get('output', {}).get('width', 640))
+                controls.setdefault('height', canonical['hard_requirements']['height'] or canonical['overrides'].get('output', {}).get('height', 360))
+                controls.setdefault('samples', canonical['overrides'].get('output', {}).get('samples', 32))
+                motion.setdefault('fps', 12)
+                motion.setdefault('duration', 3)
+                motion.setdefault('gif', True)
+            resolve_motion(motion, {'width': controls.get('width', 640), 'height': controls.get('height', 360)})
         hard, edits = canonical['hard_requirements'], canonical['overrides']
         # Hard requirements and explicit output controls cannot disagree. The
         # resolver still owns precedence between convenience controls and JSON.
@@ -84,8 +96,6 @@ def normalize_request(value, *, trusted=False):
                 hard[name] = controls[name]
         if hard['save_blend'] is None:
             hard['save_blend'] = edits.get('output', {}).get('save_blend', False)
-        if hard['transparent_background'] is None:
-            hard['transparent_background'] = True
         if 'samples' in controls:
             edits.setdefault('output', {})['samples'] = controls['samples']
         if 'color_follow' in controls:
@@ -100,6 +110,7 @@ def normalize_request(value, *, trusted=False):
             raise ValueError('rough cannot be combined with hard output dimensions')
         canonical = selection.SelectionRequest(**canonical).to_dict()
         result = {'format_version': 1, 'request_key': key, **canonical, 'rough': rough}
+        result.update(motion)
         # Preserve existing default request fingerprints across the upgrade.
         if value.get('rerender', False):
             result['rerender'] = True
@@ -202,6 +213,8 @@ def render_options(request):
     options = {'overrides': copy.deepcopy(request['overrides']), 'rough': request['rough']}
     options.update({'style_doc': copy.deepcopy(request['style_doc'])} if 'style_doc' in request
                    else {'preset': presets.preset_id(request['preset'])})
+    from .animation import CONTROLS as MOTION_CONTROLS
+    options.update({k: request[k] for k in MOTION_CONTROLS if k in request})
     hard = request['hard_requirements']
     for key in ('width', 'height', 'save_blend', 'transparent_background'):
         if hard[key] is not None:

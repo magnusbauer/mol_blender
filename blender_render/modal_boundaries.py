@@ -8,6 +8,11 @@ from pathlib import Path
 import tempfile
 
 
+def animation_enabled(*, personal, public, owner, allowed_users):
+    """Opt in a single authenticated owner, never an unrestricted shared worker."""
+    return personal or (public and bool(owner) and owner.isdigit() and owner == allowed_users)
+
+
 @contextmanager
 def package_snapshot(root):
     """One verified inventory for CLI staging and deferred provider image uploads."""

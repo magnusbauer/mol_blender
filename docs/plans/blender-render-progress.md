@@ -1,5 +1,29 @@
 # Blender Render implementation progress
 
+## Preset fidelity and direct GIF workflow — 2026-09-18
+
+The supplied ChatGPT transcript exposed forced transparency, invented background
+repainting and repeated still submissions for a spin. Consumer transparency now
+inherits the preset, and `preset_details` exposes exact camera/world settings for
+edits. Structured animation controls produce one job; consumer movie defaults are
+640×360, 32 samples, 3 seconds and 12 fps. Explicit quality controls win. GIF is the
+primary attachment and embedded viewer content up to 2 MiB; MP4 is primary when
+GIF is explicitly disabled. Internal frame archives are not auto-imported.
+
+Simplified the packaged skill and, crucially, the direct MCP server instructions.
+The server now tells the host to submit once, poll, retrieve once, and never repaint
+preset output or submit separate frame renders. Owner-only animation is an explicit
+deployment opt-in; the worker/controller require the same single allowed account.
+Unrestricted hosted animation remains disabled. Budget ceilings are unchanged.
+
+Validation: **1,326 repository tests**, **251 installed-wheel tests outside the
+checkout**, and seven Chromium viewer cases including GIF passed. A real local
+Apptainer GPU request rendered public 1QYS into a 36-frame, 640×360 GIF in 79.95s;
+conversion took 0.30s. Authored gradient and opaque alpha passed inspection, and
+in-process MCP returned the GIF bytes/attachment. This is local GPU and simulated
+host-bridge evidence, not live ChatGPT display or hosted L4 timing. See the result
+delivery report and `scripts/validate_consumer_animation.py` for reproduction.
+
 ## Fresh renders for separate requests — 2026-09-18
 
 User requested structure-in/render-out without managing earlier jobs. New consumer

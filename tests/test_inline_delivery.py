@@ -62,6 +62,6 @@ def test_viewer_discovery_has_no_network_dependency(consumer):
         async with Client(server(consumer[0])) as client:
             resource = (await client.read_resource(INLINE_PREVIEW_URI))[0]
             assert resource.meta['ui']['csp'] == {'connectDomains': [], 'resourceDomains': []}
-            assert 'data:image/png;base64,' in resource.text
+            assert "'data:' + preview.mimeType + ';base64,'" in resource.text
             assert 'download_url' not in resource.text
     asyncio.run(run())

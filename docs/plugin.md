@@ -57,7 +57,7 @@ local path. Choose the adapter that matches where the input file is available.
 
 Use `render_structure` with its structured versioned `request`, including a stable opaque `request_key`. Keep that request and the returned job ID, use `render_status` (a read-only wait of up to 25 seconds) until done, then immediately call `render_result`. Do not repeat upload or submission to check progress. Recover a lost response with `recover_render` and the same request, even after the attachment expires. Explicit additional identical renders use opt-in compatibility import/submit tools with `rerender=true` and a new stable key. The complete contract is in [MCP consumer transport](mcp-consumer.md).
 
-Default D2 discovery contains `render_structure`, `render_status`, `render_result`, `cancel_render`, `list_presets`, `list_recent_renders`, `recover_render`, `recover_transfer` and `available_quota`. Factories expose the four import/submit/structure compatibility tools only with `compatibility=True`; REST compatibility APIs remain. Shared HTTP advertises built-in selection and edits; trusted local/private schemas may also advertise complete style JSON. The compact catalog contains descriptors and a digest, with static eligibility distinct from live availability. Common renders need no catalog or quota preflight. Inputs are automatically deleted after rendering. HTTPS results include a native PNG preview and original-file references for the PNG and explicitly requested outputs; the manifest remains server-side provenance. These are repository/package contracts, not a claim that the published endpoint or any installed host has been upgraded or accepted. Refresh tools after an actual upgrade.
+Default D2 discovery contains `render_structure`, `render_status`, `render_result`, `cancel_render`, `list_presets`, `preset_details`, `list_recent_renders`, `recover_render`, `recover_transfer` and `available_quota`. Factories expose the four import/submit/structure compatibility tools only with `compatibility=True`; REST compatibility APIs remain. Shared HTTP advertises built-in selection and edits; trusted local/private schemas may also advertise complete style JSON. The compact catalog contains descriptors and a digest, with static eligibility distinct from live availability. Common renders need no catalog or quota preflight. Inputs are automatically deleted after rendering. HTTPS results include a native PNG preview and original-file references for the PNG and explicitly requested outputs; the manifest remains server-side provenance. These are repository/package contracts, not a claim that the published endpoint or any installed host has been upgraded or accepted. Refresh tools after an actual upgrade.
 
 ChatGPT receives a bounded inline PNG preview and native file references for the
 full-resolution image and explicitly requested outputs. The assistant displays the
@@ -96,3 +96,30 @@ only across transport retries of that same submission. No user-facing repeat fla
 or history lookup is needed. Old flags remain accepted for cached-client recovery
 but are no longer advertised. Ownership, reservations and same-submission retry
 protection remain intact. Legacy non-consumer REST submission semantics are unchanged.
+
+### Preset fidelity and GIF requests
+
+Omitted transparency now inherits the preset, including neon's authored gradient.
+`preset_details` returns exact built-in camera/world values for edits; it is not a
+required preflight for a normal render. A rotation must change renderer camera
+settings, never rotate or repaint the returned PNG.
+
+`request.animation="360", request.gif=true` submits one animation job. Defaults
+for this consumer interface are 640×360, 32 samples, 3 seconds, 12 fps; explicit
+settings win. PyMOL and ordinary renderer animation defaults are unchanged.
+The result returns the GIF as its primary native attachment (MP4 when GIF is
+explicitly false), without automatically importing internal frame archives. The
+viewer embeds GIFs up to 2 MiB directly; larger animations retain a PNG preview
+and the original GIF attachment. Import approval and durable host storage remain
+ChatGPT-controlled. GIF/MP4 flatten transparency onto white; PNG preserves alpha.
+
+Public shared animation is disabled by default. The operator can explicitly enable
+animation for a single restricted staging user by setting
+`BLENDER_RENDER_ENABLE_ANIMATION=1` on the normal drain/stop deployment command.
+The worker and controller require the animation owner to match the sole allowed
+GitHub user. Removing the restriction disables this exception. Lifetime budgets
+and the ten-minute total execution bound are unchanged. This is not release approval.
+
+The MCP server carries the workflow instructions for direct developer connections.
+Updating a repository SKILL.md alone does not update such a connection. Packaged
+plugins carry the corresponding skill; refresh tool metadata after deployment.

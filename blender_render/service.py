@@ -268,6 +268,9 @@ class RenderService:
         replay = self.store.operation_replay(owner, normalized['request_key'], consumer.identity(normalized))
         if replay:
             return {'replay': replay}
+        if (normalized.get('animation', 'none') != 'none' and self.store.policy.public
+                and not self.store.policy.allow_animation):
+            raise JobError('Animation is unavailable on this connection.', 'capability_unavailable', 422)
         policy = consumer.server_policy(not trusted, self.selection_policy)
         if policy.allowed_presets is not None and (not policy.allowed_presets
                 or normalized['preset'] is not None and normalized['preset'] not in policy.allowed_presets):

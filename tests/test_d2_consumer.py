@@ -19,7 +19,7 @@ from test_gateway_recovery import pair
 
 
 CANONICAL_TOOLS = {'render_structure', 'render_status', 'render_result', 'cancel_render',
-                   'list_presets', 'list_recent_renders', 'recover_render',
+                   'list_presets', 'preset_details', 'list_recent_renders', 'recover_render',
                    'recover_transfer', 'available_quota'}
 COMPATIBILITY_TOOLS = {'import_structure', 'submit_render', 'list_structures', 'delete_structure'}
 
@@ -109,7 +109,7 @@ def test_two_phase_decision_exact_snapshot_and_recovery_without_file(consumer, p
             service._execute(service.store.claim())
             state = (await client.call_tool('render_status', {'job_id': first['job_id']})).structured_content
             expected = prepare_options({'preset': 'preset_1_interface', 'width': 720, 'save_blend': False,
-                                        'transparent_background': True},
+                                        'transparent_background': False},
                                        payload, public=True, timeout=600)
             assert state['status'] == 'done'
             assert state['render_spec_sha256'] == expected['render_spec']['sha256']
@@ -213,7 +213,7 @@ def test_hosted_and_trusted_custom_style_schemas_and_execution(consumer, payload
             service._execute(service.store.claim())
             state = service.store.get('alice', result['job_id'])
             expected = prepare_options({'style_doc': style, 'width': 640, 'save_blend': False,
-                'transparent_background': True}, payload, public=False, timeout=600)
+                'transparent_background': False}, payload, public=False, timeout=600)
             assert state['status'] == 'done' and state['preset_decision'] is None
             assert state['render_spec_sha256'] == expected['render_spec']['sha256']
             bad = {**request, 'preset': 'pastel', 'request_key': 'ambiguous'}

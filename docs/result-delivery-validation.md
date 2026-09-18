@@ -6,6 +6,31 @@ preview and native original-file handoff. Returning a reference does not confirm
 host storage; cleanup still follows actual transfer or expiry. A fresh ChatGPT
 import/display check is required for this change.
 
+## September 18 preset/GIF workflow follow-up
+
+The user supplied a conversation transcript showing a missing gradient, a manually
+repainted image, and many tool calls after a GIF request. The consumer had forced
+transparency, and its MCP request schema exposed no animation controls. The
+server's actual recent job timings showed roughly 45–49 seconds of execution,
+including 8–10 seconds of conversion, but repeated admissions queued later jobs
+for more than eight minutes. These are service timings, not a full ChatGPT trace.
+
+Implemented preset-inherited transparency, exact camera/background lookup,
+structured one-job animation, direct primary GIF handoff, embedded GIF preview,
+and concise server/skill instructions prohibiting per-frame submissions and
+misrepresenting image edits as preset rendering. Owner-only animation opt-in uses
+the existing deployment workflow; unrestricted hosted animation stays disabled.
+
+Executed a real public 1QYS CIF consumer request through local Apptainer/RTX GPU,
+PyMOL export and in-process MCP presentation. The 640×360, 32-sample, 36-frame
+spin completed in 79.95 seconds, including 0.30 seconds for conversion. The GIF
+was 1,853,978 bytes with infinite looping. Opaque PNG alpha and authored gradient
+were checked, and the PNG was visually inspected. The MCP result contained one
+GIF attachment and embedded matching GIF bytes; it did not request frame-archive
+materialization. This is not a hosted L4 timing measurement or ChatGPT UI gate.
+Reproduction: `scripts/validate_consumer_animation.py` with an installed wheel,
+GPU image, PyMOL Python and a new output directory. No research structure was used.
+
 ## September 18 viewer follow-up
 
 The user reported a file-materialization approval prompt followed by repeated

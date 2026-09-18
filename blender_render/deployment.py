@@ -36,6 +36,9 @@ def deploy(*, development=False, staging_user=None, personal=None, budget_usd=No
         credentials = json.loads(secret_path.read_text())
     else:
         credentials = {key: secrets.token_urlsafe(48) for key in ("BLENDER_RENDER_ADMIN_TOKEN", "BLENDER_RENDER_DOWNLOAD_KEY", "BLENDER_RENDER_ENCRYPTION_KEY", "BLENDER_RENDER_JWT_KEY")}
+    animation_owner = str(staging_user or '') if os.environ.get('BLENDER_RENDER_ENABLE_ANIMATION') == '1' else ''
+    if os.environ.get('BLENDER_RENDER_ENABLE_ANIMATION') == '1' and not animation_owner.isdigit():
+        raise ValueError('Hosted animation requires a single numeric staging user')
     config = load_config()
     workspace = os.environ.get("MODAL_WORKSPACE") or config.get("modal_workspace")
     if not workspace:
@@ -100,6 +103,8 @@ def deploy(*, development=False, staging_user=None, personal=None, budget_usd=No
     env = os.environ.copy()
     env["BLENDER_RENDER_PUBLIC"] = "0" if development else "1"
     env["BLENDER_RENDER_APP_NAME"] = name
+    env['BLENDER_RENDER_OWNER_ANIMATION'] = animation_owner
+    env['BLENDER_RENDER_ALLOWED_USERS'] = credentials.get('BLENDER_RENDER_ALLOWED_USERS', '')
     env["BLENDER_RENDER_JOB_TIMEOUT"] = "1800" if personal else "600"
     # Freeze a build snapshot. Modal uploads local files lazily; a developer
     # editing the checkout during a long image build must not create a mixed
