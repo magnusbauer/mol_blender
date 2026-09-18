@@ -24,6 +24,16 @@ in-process MCP returned the GIF bytes/attachment. This is local GPU and simulate
 host-bridge evidence, not live ChatGPT display or hosted L4 timing. See the result
 delivery report and `scripts/validate_consumer_animation.py` for reproduction.
 
+Deployed commit `de6cfcb` through the controller drain/stop/resume workflow on
+September 18. The live engine is
+`33970d89cee1dd1bf4c7119cdc5a3dd7396e94409919047c61b77022c8861b46`.
+Health and OAuth discovery returned 200; unauthenticated MCP returned 401.
+Admission reopened with no queued/running jobs. Live configuration confirmed
+animation enabled for the sole existing allowed account and animation/GIF fields
+in discovery. Lifetime compute and operations ceilings remained $450 and $28;
+recorded operations spend was $14.35, with no reset. Actual ChatGPT GIF display
+and hosted GPU animation timing remain outstanding checks.
+
 ## Fresh renders for separate requests — 2026-09-18
 
 User requested structure-in/render-out without managing earlier jobs. New consumer
