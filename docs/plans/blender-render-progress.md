@@ -15,7 +15,13 @@ Regression coverage includes queued, completed and expired predecessors, stable
 retries without attachment rereads, and changed-intent refusal. The compatibility
 handoff test now retains its original key, matching same-submission recovery.
 Executed: **1,311 repository tests passed** and **220 installed-wheel tests passed
-outside the checkout**. Actual ChatGPT inline display remains an external gate.
+outside the checkout**. Deployment completed through drain/stop/resume. Live health
+and OAuth resource discovery returned 200; unauthenticated MCP returned 401. The
+installed schema no longer advertises the repeat flag. Account restriction and
+lifetime caps/spend were preserved. Deployed engine:
+`19401e922087e0e58082f0d7b3168bf99ce8b855f7510a91dacae6576bc7ab83`.
+No new GPU render was submitted in this deployment check. Actual ChatGPT inline
+display remains an external gate.
 
 ## Explicit ChatGPT re-render requests — 2026-09-18
 
