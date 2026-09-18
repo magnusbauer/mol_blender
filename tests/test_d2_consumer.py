@@ -64,7 +64,7 @@ def test_default_and_opt_in_discovery(consumer, compatibility):
             assert 'request' in tool.inputSchema['properties']
             schema = json.dumps(tool.inputSchema)
             assert 'request_key' in schema and 'visual_brief' in schema
-            assert 'style_doc' not in schema and 'rerender' in schema
+            assert 'style_doc' not in schema and 'rerender' not in schema
             catalog = (await client.call_tool('list_presets', {})).structured_content
             assert catalog == presets.compact_catalog()
             assert len(catalog['entries']) == 14
@@ -403,7 +403,7 @@ def test_stdio_default_trust_schemas_do_not_connect(monkeypatch):
                 tools = {tool.name: tool for tool in await client.list_tools()}
                 assert set(tools) == CANONICAL_TOOLS
                 assert ('style_doc' in json.dumps(tools['render_structure'].inputSchema)) is (profile == 'local')
-                assert 'rerender' in json.dumps(tools['render_structure'].inputSchema)
+                assert 'rerender' not in json.dumps(tools['render_structure'].inputSchema)
                 assert (await client.call_tool('list_presets', {})).structured_content == presets.compact_catalog()
     asyncio.run(run())
 

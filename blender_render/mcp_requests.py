@@ -3,6 +3,7 @@ import copy
 from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from .consumer_transport import bounded_json, descriptors
+from pydantic.json_schema import SkipJsonSchema
 
 Token = Annotated[str, Field(max_length=64, pattern=r'^[a-z][a-z0-9_]*$')]
 Capability = Annotated[str, Field(max_length=64, pattern=r'^[a-z][a-z0-9_.-]*$')]
@@ -40,8 +41,9 @@ class VisualBrief(StrictModel):
 class HostedRenderRequest(StrictModel):
     format_version: Literal[1] = 1
     request_key: str = Field(min_length=1, max_length=128, pattern=r'^[A-Za-z0-9][A-Za-z0-9_-]*$',
-        description='Opaque logical operation key. Keep it for retries and recovery; never put a filename, URL or credential here.')
-    rerender: bool = Field(default=False, description='Set true only when the user explicitly requests a new render, including replacing an expired result. Use a new request_key for that new operation, then retain both on retries. Never enable automatically for a failed, hidden, or expired result.')
+        description='Generate a fresh opaque key for each new user render request. Keep it only for retries of that submission; never reuse a previous request key or put a filename, URL or credential here.')
+    # Accept previously advertised requests for recovery, without exposing a knob.
+    rerender: SkipJsonSchema[bool] = False
     preset: str | None = None
     revision: str | int | None = None
     hard_requirements: HardRequirements = Field(default_factory=HardRequirements)

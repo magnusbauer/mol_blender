@@ -348,7 +348,8 @@ def test_compatibility_handoff_after_input_cleanup(consumer, payload, monkeypatc
     service._execute(service.store.claim())
     assert service.store.db.execute('SELECT COUNT(*) FROM inputs').fetchone()[0] == 0
     monkeypatch.setattr(selection, 'select_preset', lambda *a, **k: pytest.fail('Handoff reranked'))
-    second = record(call(factory, 'submit_render', {**arguments, 'idempotency_key': 'handoff'}))
+    # Handoff of the same submission must retain its key after input cleanup.
+    second = record(call(factory, 'submit_render', arguments))
     assert second['job_id'] == first['job_id'] and second['reused']
     assert second['style_identity'] == first['style_identity']
     assert not conversions and len(service.backend.calls) == 1

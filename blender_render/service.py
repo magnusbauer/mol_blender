@@ -296,7 +296,9 @@ class RenderService:
         self._protect('admission')
         with self._owner_import(owner), self.store.lock:
             normalized = consumer.normalize_request(request, trusted=trusted and not self.store.policy.public)
-            rerender = rerender or normalized.get('rerender', False)
+            # A new consumer operation is a new render, even for identical bytes.
+            # Operation-key replay below still protects retries of that submission.
+            rerender = True
             fingerprint = consumer.identity(normalized)
             replay = self.store.operation_replay(owner, normalized['request_key'], fingerprint, input_id=input_id)
             if replay:
@@ -341,7 +343,7 @@ class RenderService:
             raise JobError('Selection is not executable', 'selection_refused', 422)
         request = plan['request']
         return self.render_file(owner, data, suffix, name, converter, consumer.render_options(request),
-            operation_key=request['request_key'], rerender=request.get('rerender', False), _consumer=plan)
+            operation_key=request['request_key'], rerender=True, _consumer=plan)
 
     def render_file(self, owner, data, suffix, name, converter, options, *, idempotency_key=None,
                     operation_key=None, rerender=False, selection='(all)', _consumer=None):

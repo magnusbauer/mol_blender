@@ -1,5 +1,22 @@
 # Blender Render implementation progress
 
+## Fresh renders for separate requests — 2026-09-18
+
+User requested structure-in/render-out without managing earlier jobs. New consumer
+operations now bypass content-based reuse: identical inputs and presets produce
+new jobs for separate requests, even when an earlier result expired. A stable
+operation key protects only transport retries of the same submission. Old request
+fingerprints remain recoverable; previous repeat flags are accepted for cached
+clients but hidden from discovery. The model handles fresh keys, not the user.
+Legacy non-consumer REST behavior, ownership, reservations and lifetime caps are
+unchanged. No automatic retry of ambiguous paid execution was introduced.
+
+Regression coverage includes queued, completed and expired predecessors, stable
+retries without attachment rereads, and changed-intent refusal. The compatibility
+handoff test now retains its original key, matching same-submission recovery.
+Executed: **1,311 repository tests passed** and **220 installed-wheel tests passed
+outside the checkout**. Actual ChatGPT inline display remains an external gate.
+
 ## Explicit ChatGPT re-render requests — 2026-09-18
 
 A fresh user test reused an expired content-matched operation. The main D2 tool
