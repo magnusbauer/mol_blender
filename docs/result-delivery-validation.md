@@ -24,6 +24,10 @@ Real Chromium with simulated host envelopes passed initial display, notification
 wrapped metadata, legacy metadata, missing data, and invalid URL rejection, without
 network requests. This is browser execution evidence, not a ChatGPT acceptance
 check. The new viewer still requires an actual refreshed ChatGPT connection test.
+The viewer update deployed successfully to the existing owner-only endpoint.
+Live health and OAuth resource discovery returned 200, and unauthenticated MCP
+returned 401. Full tests: 1,304 passed; installed-wheel tests: 184 passed.
+
 Reproduce with `scripts/validate_inline_widget.py --browser /path/to/chromium`
 using Playwright and an installed package outside the checkout.
 

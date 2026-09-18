@@ -13,8 +13,13 @@ outside the checkout**, and six real Chromium cases passed with simulated host
 messages and no network requests. Cases cover initial data, delayed notification,
 wrapped and legacy metadata, and missing/invalid data. The old viewer stays opt-in.
 Discovery hashes were updated for the new resource and result-tool metadata.
-Actual ChatGPT display and reopen/persistence are still outstanding; a simulated
-host bridge does not satisfy those gates. See the result-delivery report.
+Owner-only deployment completed through drain/stop/resume. Live health and OAuth
+resource discovery returned 200; unauthenticated MCP returned 401. The deployed
+viewer asset exists and engine build is
+`193eae61bed7adee3928170847589b6c4a290986a0e1fa6890a74afd314abe9d`.
+Account restriction and lifetime caps were preserved. Actual ChatGPT display and
+reopen/persistence are still outstanding; a simulated host bridge does not satisfy
+those gates. See the result-delivery report.
 
 ## ChatGPT native image handoff — 2026-09-18
 
