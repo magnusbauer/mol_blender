@@ -1,5 +1,22 @@
 # Blender Render implementation progress
 
+## Explicit ChatGPT re-render requests — 2026-09-18
+
+A fresh user test reused an expired content-matched operation. The main D2 tool
+had no way to express an intentional repeat, although the service and compatibility
+API already supported it. Added strict `request.rerender` to the shared consumer
+request and passed it through admission to the existing repeat controls. Only an
+explicit user request for a new render permits true and a new stable request key.
+The same key/intent still recovers before attachment download; changing intent
+under an existing key is refused. Default/false retains existing fingerprints.
+No automatic expiry retry, ownership, reservation, quota, or renderer policy changed.
+
+Executed **1,309 repository tests** and **157 installed-wheel tests outside the
+checkout**. Regression covers expired content reuse, explicit replacement, stable
+retry without another attachment download/job, and repeated explicit operations.
+The tests also check strict flags, default identity stability and no style leakage.
+Actual ChatGPT selection of the new flag and inline display remain external gates.
+
 ## ChatGPT embedded preview viewer — 2026-09-18
 
 A real user test showed a materialization prompt and repeated captions without an

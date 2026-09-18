@@ -86,3 +86,13 @@ The legacy URL-based widget remains opt-in. Refresh the connection after this
 metadata change. Actual ChatGPT display and retention remain separate host tests.
 
 For ChatGPT with private compute, use your lab's authenticated HTTPS gateway as described in [HPC setup](hpc.md), then package that exact private URL and its separately registered connection as described in [plugin installation and private routing](plugin-installation.md). ChatGPT cannot call a laptop's loopback stdio service directly.
+
+### Explicitly rendering again
+
+The default request reuses matching input/settings even after its result expires;
+changing only `request_key` does not authorize replacement compute. For an explicit
+user request for another render, `render_structure` now accepts
+`request.rerender=true` together with a new `request_key`. Keep both unchanged on
+retries. Reusing an old key with changed intent is rejected. An expired, failed,
+ambiguous or hidden result never automatically starts a replacement. Omitting the
+flag (or setting it false) preserves existing operation fingerprints and recovery.

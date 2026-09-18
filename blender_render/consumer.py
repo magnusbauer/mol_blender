@@ -47,7 +47,7 @@ def normalize_request(value, *, trusted=False):
     try:
         if not isinstance(value, dict):
             raise ValueError('Consumer request must be an object')
-        allowed = {'format_version', 'request_key', *SELECTION_FIELDS, *CONTROLS}
+        allowed = {'format_version', 'request_key', 'rerender', *SELECTION_FIELDS, *CONTROLS}
         if trusted:
             allowed.add('style_doc')
         if set(value) - allowed:
@@ -55,6 +55,8 @@ def normalize_request(value, *, trusted=False):
         consumer_transport.bounded_json(value)
         value = consumer_transport.descriptors(selection._json_copy(value))
         key = request_key(value.get('request_key'))
+        if type(value.get('rerender', False)) is not bool:
+            raise ValueError('rerender must be a boolean')
         version = value.get('format_version', 1)
         if type(version) is not int or version != 1:
             raise ValueError('Unsupported consumer request format')
@@ -98,6 +100,9 @@ def normalize_request(value, *, trusted=False):
             raise ValueError('rough cannot be combined with hard output dimensions')
         canonical = selection.SelectionRequest(**canonical).to_dict()
         result = {'format_version': 1, 'request_key': key, **canonical, 'rough': rough}
+        # Preserve existing default request fingerprints across the upgrade.
+        if value.get('rerender', False):
+            result['rerender'] = True
         if 'style_doc' in value:
             if (selected.preset is not None or selected.revision is not None
                     or selected.visual_brief != selection.VisualBrief()
