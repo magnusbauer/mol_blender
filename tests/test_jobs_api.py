@@ -477,10 +477,10 @@ def test_mcp_single_call_retry_status_and_native_result(tmp_path, payload, monke
             assert repeated['job_id'] == first['job_id'] and repeated['reused']
             result = await client.call_tool('render_result', {'job_id': first['job_id']})
             assert any(item.type == 'image' for item in result.content)
-            assert not any(item.type == 'resource_link' for item in result.content)
-            assert any(item.type == 'text' and '[Download PNG](https://' in item.text for item in result.content)
-            assert any(item.type == 'text' and f"[View PNG preview]({result.structured_content['preview_url']})" in item.text for item in result.content)
-            assert result.structured_content['preview_url'].startswith('https://render.example.org/')
+            assert any(item.type == 'resource_link' and item.name == 'render.png' for item in result.content)
+            assert not any(item.type == 'text' and 'https://' in item.text for item in result.content)
+            assert 'preview_url' not in result.structured_content
+            assert result.structured_content['delivery_mode'] == 'native_files'
             assert conversions == ['.cif'] and service.backend.calls == [first['job_id']]
     try:
         asyncio.run(run())

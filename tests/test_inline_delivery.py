@@ -1,0 +1,49 @@
+"""Native file handoff must not consume files before the host fetches them."""
+import json
+from urllib.parse import urlsplit
+
+from fastapi.testclient import TestClient
+
+from blender_render.api import create_app
+from test_d2_consumer import consumer, server
+from test_d2_review import call, record, submit
+from test_jobs_api import payload, TOKEN
+
+
+def test_native_image_handoff_no_prose_links_and_fetch_cleanup(consumer):
+    service, _, _ = consumer
+    job = submit(service)
+    service._execute(service.store.claim())
+    path = service.store.artifact_root(job['job_id']) / 'render.png'
+    original = path.read_bytes()
+    result = call(server(service), 'render_result', {'job_id': job['job_id']})
+    assert not result.is_error
+    metadata = record(result)
+    assert metadata['complete'] and metadata['delivery_mode'] == 'native_files'
+    assert metadata['file_import_confirmed'] is False
+    assert 'download_url' not in json.dumps(metadata)
+    assert 'preview_url' not in metadata
+    assert any(item.type == 'image' for item in result.content)
+    refs = [item for item in result.content if item.type == 'resource_link']
+    assert len(refs) == 1  # No unsolicited manifest/scene import prompts.
+    assert refs[0].name == 'render.png' and refs[0].mimeType == 'image/png'
+    assert refs[0].size == len(original)
+    for item in result.content:
+        if item.type == 'text':
+            assert 'https://' not in item.text and '](' not in item.text
+    assert path.read_bytes() == original  # Returning a reference isn't delivery.
+    # The signed native-file reference uses the normal owned download route.
+    api = TestClient(create_app(service, token=TOKEN, signing_key='x' * 48,
+                                public_url='https://render.example.org'))
+    route = urlsplit(str(refs[0].uri)).path
+    assert api.head(route).status_code in (405, 200)
+    assert path.exists()
+    response = api.get(route)
+    assert response.status_code == 200 and response.content == original
+    assert not path.exists()
+    states = json.loads(service.store.db.execute('SELECT artifact_states FROM jobs WHERE id=?',
+                        (job['job_id'],)).fetchone()[0])
+    assert states['render.png'] == 'delivered'
+    assert api.get(route).status_code == 410
+    assert len(service.backend.calls) == 1
+    api.close()

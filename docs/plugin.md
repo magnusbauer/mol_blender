@@ -59,28 +59,26 @@ Use `render_structure` with its structured versioned `request`, including a stab
 
 Default D2 discovery contains `render_structure`, `render_status`, `render_result`, `cancel_render`, `list_presets`, `list_recent_renders`, `recover_render`, `recover_transfer` and `available_quota`. Factories expose the four import/submit/structure compatibility tools only with `compatibility=True`; REST compatibility APIs remain. Shared HTTP advertises built-in selection and edits; trusted local/private schemas may also advertise complete style JSON. The compact catalog contains descriptors and a digest, with static eligibility distinct from live availability. Common renders need no catalog or quota preflight. Inputs are automatically deleted after rendering. Results include a native PNG preview and PNG, optional `.blend`, and manifest downloads. These are repository/package contracts, not a claim that the published endpoint or any installed host has been upgraded or accepted. Refresh tools after an actual upgrade.
 
-ChatGPT receives a lightweight native PNG preview, an inline preview URL, and direct PNG,
-Blender scene, and manifest links. The assistant should include **View PNG preview** and download links in its final
-reply. Some ChatGPT surfaces hide remote Markdown images even when the URL is
-correct, so the explicit preview link is required. Inline display is not yet
-reliable across ChatGPT surfaces. Delivery does not depend on a custom MCP Apps card: a ChatGPT
-conversation mounted that card but stayed on "Loading the completed render"
-after the render had finished. The legacy resource and private resource hook require
-the separate `legacy_widget=True` option; default and compatibility-tool discovery
-exclude that widget. Request
-the result promptly: each downloaded file is deleted, and undelivered files
-expire fifteen minutes after completion.
+ChatGPT receives a bounded inline PNG preview and native file references for the
+full-resolution image and explicitly requested outputs. The assistant displays the
+image with a short description; it does not provide Markdown download links or
+ask the user to download promptly. The manifest is retained for provenance and is
+not automatically imported as an extra attachment.
 
-The native preview is at most 1024 pixels on its longest edge and 384 KiB;
-the downloadable PNG keeps the requested resolution and transparency. Results
-use ordinary download links instead of MCP resource attachments, avoiding an
-automatic import of all output files before ChatGPT can finish its reply.
+A native file reference lets the host fetch the original file. Its signed URL is
+transport metadata, not a link to include in the answer. Returning the tool result
+alone does not confirm import: `file_import_confirmed` remains false. The server
+removes a file after its HTTP transfer completes, or when its existing fifteen-
+minute retention expires. ChatGPT controls its own storage and may request an
+attachment-import confirmation. Permanent ChatGPT retention is not guaranteed by
+an MCP response or by displaying a preview.
 
-Preview generation failure preserves successful links or verified local paths
-and reports `presentation_status="fallback_links"` with `presentation_failed`.
-It cannot change render success or repeat downloads, acknowledgement or rendering.
-Compatibility submission obeys the same server-owned selection policy. D2 accepts
-only bounded canonical transport descriptors; see the contract for vocabularies,
-durable metadata validation and compact actionable status fields.
+The native preview is at most 1024 pixels on its longest edge and 384 KiB; the
+attached PNG retains the rendered resolution and transparency. A preview failure
+returns `presentation_status="file_handoff"` and `presentation_failed` while
+preserving the file references. It cannot change render success or submit another
+render. Do not repeatedly retrieve results to fix hidden images or failed imports.
+The default flow does not use the legacy widget, which previously failed to finish
+loading in ChatGPT. Actual attachment import/display remains a separate host test.
 
 For ChatGPT with private compute, use your lab's authenticated HTTPS gateway as described in [HPC setup](hpc.md), then package that exact private URL and its separately registered connection as described in [plugin installation and private routing](plugin-installation.md). ChatGPT cannot call a laptop's loopback stdio service directly.

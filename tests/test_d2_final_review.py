@@ -174,7 +174,7 @@ def test_final_delivery_acquisition_and_presentation(consumer, connection, monke
         assert 'manifest.json' in ([a['name'] for a in data['artifacts']] if mode == 'hosted' else data['outputs'])
     else:
         assert data['complete']
-        assert data['presentation_status'] == ('inline_preview' if failure == 'success' else 'fallback_links')
+        assert data['presentation_status'] == ('inline_preview' if failure == 'success' else 'file_handoff' if mode == 'hosted' else 'fallback_links')
         assert data['presentation_error'] == (None if failure == 'success' else 'presentation_failed')
         assert bool([c for c in result.content if c.type == 'image']) is (failure == 'success')
         delivered = png if mode == 'hosted' else Path(data['outputs']['render.png'])

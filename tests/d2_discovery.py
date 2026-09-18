@@ -40,9 +40,9 @@ def digests(records):
 
 
 EXPECTED_DIGESTS = {
-    'hosted_default': 'cf4a49fa7c60a5c86b7fff671601a61ab339162ef7ea108003b1cfe271369aec',
+    'hosted_default': '214354d05ad76906f98a39afc04280db39a0fafe2f44888999afc984db8c3adf',
     'trusted_default': '120831a2f106523650adedc3128c6fa08a6c773f55bcde4f05f96573ba9b27c6',
-    'hosted_compatibility': '4846bb3dc9f666e9557443d713f75cf11a99bf14c4aa2cee7bb07c982838c509',
+    'hosted_compatibility': '7a19392cf7f959294906b70aace0b6c87671a15f9b4f5300542a0f4be6edba80',
     'trusted_compatibility': 'd03da01c3daefedc7c4ee2310085ff68ebf67d90f52e54e605468fc31a8f24ae',
-    'legacy_widget': '1d3f7410bf6f6542c4c68a5da4613e51a0bb0beab96b4b29efa077b69e95fe68',
+    'legacy_widget': '7aaeb599c7a532d6fbed208339a8f3a7041b66ee0c1f6be53862fb4c0b970a50',
 }

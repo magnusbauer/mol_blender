@@ -1,5 +1,11 @@
 # Result delivery validation
 
+The September 7 record below describes the former link-based flow. The current
+`codex/chatgpt-inline-results` change replaces those written links with an inline
+preview and native original-file handoff. Returning a reference does not confirm
+host storage; cleanup still follows actual transfer or expiry. A fresh ChatGPT
+import/display check is required for this change.
+
 Validated on 2026-09-07 against the private, owner-only Modal service.
 
 The user's pastel `1sps_pose.pse` render completed in about 31 seconds

@@ -142,12 +142,13 @@ def test_review_preview(consumer, monkeypatch, tmp_path, mode):
     result = call(factory, 'render_result', args)
     assert not result.is_error
     data = record(result)
-    assert data['presentation_status'] == 'fallback_links'
+    assert data['presentation_status'] == ('file_handoff' if mode == 'hosted' else 'fallback_links')
     assert data['presentation_error'] == 'presentation_failed'
     assert data['complete']
     assert SENTINEL not in str(result)
     if mode == 'hosted':
-        assert data['preview_url'] and data['artifacts']
+        assert 'preview_url' not in data and data['artifacts']
+        assert any(c.type == 'resource_link' for c in result.content)
         assert png.read_bytes() == original
         assert len(inventory_calls) == 1
         assert service.store.get('alice', job['job_id'])['status'] == 'done'

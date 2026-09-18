@@ -1,5 +1,30 @@
 # Blender Render implementation progress
 
+## ChatGPT native image handoff — 2026-09-18
+
+User requested inline results without written download links. HTTPS `render_result`
+now returns the bounded native PNG preview plus a native full-resolution file
+reference. Explicitly requested outputs also use file references; the provenance
+manifest is not automatically imported. No preview/download URLs appear in text
+or structured metadata. The plugin skill matches that behavior.
+
+Constructing the result does not acknowledge delivery or claim permanent ChatGPT
+storage. Existing signed artifact transfer removes the source only after transfer;
+undelivered files retain the same expiry. Preview errors preserve file handoff and
+never resubmit rendering. PyMOL and stdio output delivery are unchanged.
+
+Executed: **1,303 repository tests passed**, and **154 focused tests passed from a
+built wheel installed outside the checkout**. Native reference tests fetch the exact
+PNG bytes and check the source remains before fetch and is removed afterwards.
+Discovery fingerprints were updated for the intentional result-tool description.
+
+Actual ChatGPT attachment import, inline display, and persistence after reopening
+the conversation remain external acceptance checks. An MCP file reference alone
+is not evidence that ChatGPT retained the original. Earlier repeated attachment
+prompts are documented in the historical result-delivery report. No unrestricted
+publication or release approval is implied.
+
+
 ## General preset animation and PyMOL movies — 2026-09-16
 
 Bounded feature branch `codex/preset-animation`, based on the prior animation
