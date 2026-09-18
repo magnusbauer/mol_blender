@@ -18,6 +18,17 @@ built wheel installed outside the checkout**. Native reference tests fetch the e
 PNG bytes and check the source remains before fetch and is removed afterwards.
 Discovery fingerprints were updated for the intentional result-tool description.
 
+Hosted rollout attempted through the drain/stop deployment command. The previous
+owner-only controller stopped cleanly with no running or queued work. Images built,
+but Modal rejected L4 function deployment: "Please add a payment method to use L4
+GPU functions." The failed replacement was stopped. Rollback of the previous app
+was also rejected because Modal requires a currently deployed app for rollback.
+The hosted ChatGPT endpoint is therefore offline pending the operator's Modal
+billing resolution. No payment method was added, no admission was broadened, and
+OAuth credentials and lifetime accounting remain in the existing secret/Volume.
+The separate lmilles PyMOL installation was not changed. The built wheel is staged
+in private operator storage for a retry after the external blocker is resolved.
+
 Actual ChatGPT attachment import, inline display, and persistence after reopening
 the conversation remain external acceptance checks. An MCP file reference alone
 is not evidence that ChatGPT retained the original. Earlier repeated attachment
