@@ -5,17 +5,61 @@
 <title>Molecular render</title>
 <style>
 :root{color-scheme:light dark;font:14px system-ui,sans-serif}
-html,body{margin:0;padding:0;background:transparent}img{display:block;width:100%;height:auto;object-fit:contain}nav{display:flex;gap:8px;flex-wrap:wrap;padding:10px 0}nav[hidden]{display:none}a{font:inherit;color:inherit;border:1px solid #8886;border-radius:6px;padding:7px 12px;text-decoration:none}img[hidden]{display:none}p{margin:0;padding:12px;color:inherit}
+html,body{margin:0;padding:0;background:transparent}img{display:block;width:100%;height:auto;object-fit:contain}nav{display:flex;gap:8px;flex-wrap:wrap;padding:10px 0}nav[hidden]{display:none}a,button{font:inherit;color:inherit;border:1px solid #8886;border-radius:6px;padding:7px 12px;text-decoration:none}img[hidden]{display:none}p{margin:0;padding:12px;color:inherit}
 </style>
 <main id="render">
 <img id="preview" alt="Blender molecular render" hidden>
 <p id="status" role="status">Waiting for the rendered image…</p>
 <nav id="downloads" aria-label="Download render" hidden></nav>
+<button id="save" type="button" hidden>Save image to chat</button>
+<p id="saved" role="status" hidden></p>
 </main>
 <script>
 const image = document.getElementById('preview');
 const status = document.getElementById('status');
 let shown = false;
+let saveSource = null;
+let saving = false;
+const saveButton = document.getElementById('save');
+const savedStatus = document.getElementById('saved');
+let storedImage = window.openai?.widgetState?.privateContent?.savedImage || null;
+async function restoreSavedImage() {
+  if (!storedImage?.fileId || !window.openai?.getFileDownloadUrl) return;
+  try {
+    const {downloadUrl} = await window.openai.getFileDownloadUrl({fileId:storedImage.fileId});
+    const url = new URL(downloadUrl);
+    if (url.protocol !== 'https:') return;
+    image.src = url.href;
+    savedStatus.hidden = false;
+    savedStatus.textContent = 'Image saved in ChatGPT.';
+  } catch (_) {
+    savedStatus.hidden = false;
+    savedStatus.textContent = 'The saved image could not be opened in this session.';
+  }
+}
+saveButton.onclick = async () => {
+  if (saving || !saveSource || !window.openai?.uploadFile || !window.openai?.setWidgetState) return;
+  saving = true; saveButton.disabled = true; savedStatus.hidden = false;
+  savedStatus.textContent = 'Saving image to ChatGPT…';
+  try {
+    const url = new URL(saveSource.url);
+    if (url.protocol !== 'https:' || url.username || url.password || !url.pathname.startsWith('/preview/')) throw new Error();
+    const response = await fetch(url.href, {credentials:'omit', signal:AbortSignal.timeout(30000)});
+    if (!response.ok || !response.headers.get('content-type')?.startsWith('image/png')) throw new Error();
+    const blob = await response.blob();
+    if (blob.size > 64 * 1024 * 1024) throw new Error();
+    const {fileId} = await window.openai.uploadFile(new File([blob], 'molecular-render.png', {type:'image/png'}));
+    if (typeof fileId !== 'string' || !fileId) throw new Error();
+    storedImage = {fileId, jobId:saveSource.jobId};
+    window.openai.setWidgetState({modelContent:'Rendered PNG saved in ChatGPT.',
+      privateContent:{savedImage:storedImage}, imageIds:[fileId]});
+    savedStatus.textContent = 'Image saved in ChatGPT.';
+    saveButton.textContent = 'Image saved';
+  } catch (_) {
+    savedStatus.textContent = 'Image was not saved. It may have expired, or ChatGPT file saving may be unavailable.';
+    saveButton.disabled = false;
+  } finally { saving = false; resize(); }
+};
 function resize() {
   const height = Math.ceil(document.getElementById('render').getBoundingClientRect().height);
   window.openai?.notifyIntrinsicHeight?.(height);
@@ -26,6 +70,12 @@ function render(envelope) {
   // ChatGPT wraps the MCP envelope; MCP Apps sends it directly. Older
   // ChatGPT bridges expose the hidden metadata as the value itself.
   const result = envelope.mcp_tool_result || envelope.call_tool_result || envelope;
+  const source = result._meta?.saveImage || result.saveImage;
+  if (source) {
+    saveSource = source;
+    saveButton.hidden = !(window.openai?.uploadFile && window.openai?.setWidgetState);
+    if (storedImage?.jobId === source.jobId) { saveButton.disabled = true; saveButton.textContent = 'Image saved'; }
+  }
   const links = result._meta?.downloads || result.downloads;
   if (Array.isArray(links)) {
     const bar = document.getElementById('downloads');
@@ -82,6 +132,7 @@ image.onerror = () => {
   image.hidden = true;
   status.hidden = false;
   status.textContent = 'The preview is unavailable or has expired. Rendering has not been repeated.';
+  if (storedImage && !image.dataset.restoring) { image.dataset.restoring = 'true'; restoreSavedImage(); }
   resize();
 };
 window.addEventListener('message', event => {
@@ -100,6 +151,7 @@ window.addEventListener('openai:set_globals', event => {
 });
 render(window.openai?.toolResponseMetadata);
 render(window.openai?.toolOutput);
+if (storedImage && !image.getAttribute('src')) restoreSavedImage();
 if (parent !== window) parent.postMessage({jsonrpc:'2.0',id:'initialize',method:'ui/initialize',params:{
   appInfo:{name:'Blender Render',version:'0.2.0b1'},appCapabilities:{},protocolVersion:'2026-01-26'
 }}, '*');

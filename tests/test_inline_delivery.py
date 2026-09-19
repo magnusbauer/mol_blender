@@ -40,6 +40,10 @@ def test_native_image_handoff_no_prose_links_and_fetch_cleanup(consumer):
     # The signed native-file reference uses the normal owned download route.
     api = TestClient(create_app(service, token=TOKEN, signing_key='x' * 48,
                                 public_url='https://render.example.org'))
+    saved_preview = api.get(urlsplit(result.meta['saveImage']['url']).path)
+    assert saved_preview.content == original
+    assert saved_preview.headers['access-control-allow-origin'] == '*'
+    assert path.exists()  # Reading for a host save is not a delivery receipt.
     route = urlsplit(str(refs[0].uri)).path
     assert api.head(route).status_code in (405, 200)
     assert path.exists()
@@ -61,7 +65,7 @@ def test_viewer_discovery_allows_only_render_origin(consumer):
     async def run():
         async with Client(server(consumer[0])) as client:
             resource = (await client.read_resource(INLINE_PREVIEW_URI))[0]
-            assert resource.meta['ui']['csp'] == {'connectDomains': [], 'resourceDomains': ['https://render.example.org']}
+            assert resource.meta['ui']['csp'] == {'connectDomains': ['https://render.example.org'], 'resourceDomains': ['https://render.example.org', 'https://*.oaiusercontent.com']}
             assert "'data:' + preview.mimeType + ';base64,'" in resource.text
             assert 'download_url' not in resource.text
     asyncio.run(run())
@@ -72,7 +76,7 @@ def test_cached_viewer_versions_remain_readable(consumer):
     from fastmcp import Client
     async def run():
         async with Client(server(consumer[0])) as client:
-            for version in range(1, 7):
+            for version in range(1, 8):
                 uri = f'ui://blender-render/inline-result-v{version}.html'
                 resource = (await client.read_resource(uri))[0]
                 assert str(resource.uri) == uri

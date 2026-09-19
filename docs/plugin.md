@@ -126,3 +126,10 @@ and the ten-minute total execution bound are unchanged. This is not release appr
 The MCP server carries the workflow instructions for direct developer connections.
 Updating a repository SKILL.md alone does not update such a connection. Packaged
 plugins carry the corresponding skill; refresh tool metadata after deployment.
+
+The viewer offers **Save image to chat** when ChatGPT exposes file upload and
+widget-state APIs. Click it while the PNG is available, then wait for **Image
+saved in ChatGPT**. This stores a host file ID for reopening the PNG later;
+it does not save GIF/MP4 or guarantee permanent retention. If saving fails or the
+host lacks the API, use the download controls. Actual host storage must be verified
+in ChatGPT; browser tests use a simulated upload API.

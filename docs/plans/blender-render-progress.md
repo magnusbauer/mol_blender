@@ -1,5 +1,23 @@
 # Blender Render implementation progress
 
+## Save rendered PNG in ChatGPT — September 19
+
+Viewer v7 adds a user-initiated Save image to chat action when uploadFile and
+setWidgetState are available. It reads the signed full-resolution PNG preview,
+uploads a PNG File through the host API, and records the confirmed fileId in
+structured widget state (privateContent plus imageIds). Reopening can obtain a
+fresh host URL via getFileDownloadUrl without another render or the original
+server copy. This is PNG saving, not GIF/MP4 persistence or guaranteed permanent
+retention. The file-library option is not requested. The user must save while the
+source is available; prior downloads/imports may already have consumed it.
+
+Only signed preview reads gain credential-free CORS; private APIs and artifact
+ownership checks are unchanged. Widget fetch permissions permit the renderer
+origin, and image loading permits host oaiusercontent subdomains. Upload failures
+do not show success or record a file ID. Browser checks exercise user initiation,
+success, rejected uploads, and restore using a mocked host API. Real ChatGPT file
+upload/storage is still an outstanding host verification gate.
+
 ## Viewer controls and sharper defaults — September 19
 
 The user's screenshot now provides actual ChatGPT inline-display evidence for

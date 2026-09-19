@@ -406,7 +406,7 @@ def create_app(service: RenderService, *, token: str, public_url: str = "", sign
         if name not in {'render.png', 'render.gif'}:
             raise JobError('Only PNG and GIF previews are available.', 'not_found', 404)
         path, mime = service.artifact(identity, identifier, name)
-        return FileResponse(path, media_type=mime)
+        return FileResponse(path, media_type=mime, headers={'Access-Control-Allow-Origin': '*'})
 
     @app.post("/v1/admin/drain", dependencies=[Depends(admin)])
     async def drain():

@@ -56,6 +56,35 @@ with sync_playwright() as p:
    page.get_by_text('Download GIF',exact=True).click()
    assert page.evaluate('window.clicked')=='https://render.example.org/download/gif'
   page.close();print(mode,'passed')
+ # Saving requires explicit action and confirmed host upload; restore uses file ID.
+ for fail in (False, True):
+  page=browser.new_page()
+  page.set_content(html)
+  page.route('https://render.example.org/preview/save',lambda route: route.fulfill(content_type='image/png',body=buf.getvalue()))
+  page.evaluate("""fail => {window.openai={
+    uploadFile:async file=>{window.uploaded={name:file.name,size:file.size,type:file.type}; if(fail) throw Error('unavailable'); return {fileId:'file-saved'};},
+    setWidgetState:state=>window.savedState=state
+  }}""",fail)
+  page.evaluate("r=>window.postMessage({jsonrpc:'2.0',method:'ui/notifications/tool-result',params:r},'*')",
+    {'_meta':{'preview':preview,'saveImage':{'jobId':'test-job','url':'https://render.example.org/preview/save'}}})
+  assert page.evaluate('window.uploaded') is None
+  page.get_by_text('Save image to chat',exact=True).click()
+  if fail:
+   page.wait_for_function("document.getElementById('saved').textContent.includes('not saved')")
+   assert page.evaluate('window.savedState') is None
+  else:
+   page.wait_for_function("window.savedState?.imageIds?.[0]==='file-saved'")
+   assert page.evaluate('window.uploaded.type')=='image/png'
+   state=page.evaluate('window.savedState')
+  page.close()
+ page=browser.new_page()
+ page.route('https://files.oaiusercontent.com/saved.png',lambda route: route.fulfill(content_type='image/png',body=buf.getvalue()))
+ page.goto('about:blank')
+ page.evaluate("state=>window.openai={widgetState:state,getFileDownloadUrl:async({fileId})=>{window.restoredId=fileId;return {downloadUrl:'https://files.oaiusercontent.com/saved.png'}}}",state)
+ page.set_content(html)
+ page.wait_for_function("document.getElementById('preview').naturalWidth===80")
+ assert page.evaluate('window.restoredId')=='file-saved'
+ page.close();print('save, failed upload, and saved-file restore passed')
  # Exercise the actual parent/iframe initialization sequence, not only globals.
  page=browser.new_page()
  page.set_content('<iframe id="app" style="height:1000px" sandbox="allow-scripts"></iframe>')
