@@ -15,6 +15,14 @@ explicit settings and non-consumer renderer defaults remain unchanged. Frame cou
 stays 36 at 12 fps over three seconds. This increases render work; no new quality
 preset timing or new GPU render is claimed. Existing artifacts are not upscaled.
 
+Validation: 1,327 repository tests and 89 installed-wheel checks passed; eleven
+Chromium cases cover explicit downloads, rejected unsafe URLs, iframe handshake
+and content height independent of a 1,000px host viewport. Deployed `e954fe3`
+through drain/stop/resume. Live viewer v6 and engine
+`8fd03c575c263bf8c36a46d294291ad7859f5f2f861a19ffed47ac596c13817d`
+match the staged package. Actual ChatGPT button interaction and the higher-quality
+render's runtime remain unverified; no new render was submitted for these checks.
+
 ## Viewer loading compatibility — September 19
 
 Following a real ChatGPT “Could not open this app” report, viewer v5 retains read
