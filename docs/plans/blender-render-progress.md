@@ -1,5 +1,54 @@
 # Blender Render implementation progress
 
+## ChatGPT output persistence repair — September 19
+
+The viewer now offers every generated artifact for saving: PNG, GIF, MP4,
+explicitly requested Blender scene, manifest and frame archive. Native file
+references and widget reads use signed non-consuming downloads (`delivery=ack`),
+so a host import cannot delete a file before the widget uploads it. Legacy
+consuming downloads, ownership/signature checks and expiry remain unchanged.
+No new render or automatic replay is introduced.
+
+Viewer v11 restores images and all download controls from saved host file IDs,
+even with no original tool metadata or with delayed widget state. It requests
+file-library storage when available. Each upload is recorded separately; a
+failed state write remains visibly unsaved, and its retry reuses the uploaded
+ID. Successful formats are not uploaded again when another format fails.
+Old viewer resource URIs through v10 remain readable. Tool discovery snapshots
+reflect the new URI and all-output result description.
+
+The optional upload/library, widget-state and fresh-download-URL APIs were checked
+against the [official component bridge reference](https://developers.openai.com/plugins/reference).
+ChatGPT still controls permission, format acceptance and retention. Files above
+the viewer's existing 64 MiB upload limit remain explicitly unsaved with temporary
+download controls. No claim of permanent retention or real ChatGPT acceptance.
+
+Validation used a frozen tracked-file source copy to exclude generated runtimes.
+An initial checkout-wide run was invalidated by edits during execution and the
+engine's restart-required source guard. The first frozen run had 1,339 passes,
+one skip and one expected discovery-snapshot mismatch; the snapshot was updated.
+Final frozen suite: **1,340 passed, 1 skipped, 5 warnings in 55.50 seconds**.
+Outside-checkout wheel tests: **81 passed** across inline delivery, animation,
+MCP contracts, result recovery and jobs API; updated discovery: **1 passed**.
+Chromium executed the packaged viewer's 15 scenario groups with a simulated host,
+including all six outputs, state-write rejection/retry, partial format rejection,
+duplicate suppression, late APIs, state-only reopening and sandbox handshake.
+All passed. These are real browser executions with simulated ChatGPT APIs.
+
+Wheel SHA-256: `1362c0acdbe74296aefd2421f3b9cd8ab4b2fa2f168cce9883c794cc571cf72c`.
+All 99 source package files match the wheel and installed copy; the additional
+engine manifest is build-generated. Installation used a temporary target outside
+the checkout and existing test dependencies, not a fresh dependency environment.
+Commands: `python -m pip wheel --no-deps --no-build-isolation .`,
+`python -m pip install --no-deps --target installed wheels/*.whl`,
+`python -m pytest -q`, and `python validate_inline_widget.py --browser <chrome>`.
+
+No deployment, live OAuth/ChatGPT check or paid render was performed. This session
+has no authenticated ChatGPT browser capability. The remaining acceptance gate
+is to upgrade the restricted service using drain/stop, refresh the connection,
+then verify actual host saving and reopen/download after server artifacts expire.
+The separate earlier attached-file worker failure remains unresolved.
+
 ## Public PDB submission correction — September 19
 
 The real ChatGPT test submitted `file="1QYS"` to the attachment-only

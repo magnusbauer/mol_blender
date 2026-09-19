@@ -25,7 +25,8 @@ def test_native_image_handoff_no_prose_links_and_fetch_cleanup(consumer):
     assert 'preview_url' not in metadata
     assert any(item.type == 'image' for item in result.content)
     refs = [item for item in result.content if item.type == 'resource_link']
-    assert len(refs) == 1  # No unsolicited manifest/scene import prompts.
+    assert {ref.name for ref in refs} == {'render.png', 'manifest.json'}
+    refs.sort(key=lambda ref: ref.name != 'render.png')
     assert refs[0].name == 'render.png' and refs[0].mimeType == 'image/png'
     assert refs[0].size == len(original)
     for item in result.content:
@@ -44,6 +45,15 @@ def test_native_image_handoff_no_prose_links_and_fetch_cleanup(consumer):
     assert saved_preview.content == original
     assert saved_preview.headers['access-control-allow-origin'] == '*'
     assert path.exists()  # Reading for a host save is not a delivery receipt.
+    # Host imports and viewer autosave can race: both must read without consuming.
+    for ref in refs:
+        for _ in range(2):
+            response = api.get(str(ref.uri))
+            assert response.status_code == 200
+            assert response.headers['access-control-allow-origin'] == '*'
+    assert path.exists()
+    assert api.get(str(refs[0].uri).replace('/download/', '/download/tampered')).status_code == 401
+    # Legacy explicit consumption remains unchanged.
     route = urlsplit(str(refs[0].uri)).path
     assert api.head(route).status_code in (405, 200)
     assert path.exists()
@@ -76,7 +86,7 @@ def test_cached_viewer_versions_remain_readable(consumer):
     from fastmcp import Client
     async def run():
         async with Client(server(consumer[0])) as client:
-            for version in range(1, 10):
+            for version in range(1, 11):
                 uri = f'ui://blender-render/inline-result-v{version}.html'
                 resource = (await client.read_resource(uri))[0]
                 assert str(resource.uri) == uri

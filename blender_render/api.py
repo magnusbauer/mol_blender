@@ -399,7 +399,8 @@ def create_app(service: RenderService, *, token: str, public_url: str = "", sign
         identity, identifier, name = downloads.verify(signed)
         path, mime = service.artifact(identity, identifier, name)
         return FileResponse(path, media_type=mime, filename=name,
-            background=None if 'range' in request.headers else BackgroundTask(service.store.artifact_delivered, identity, identifier, name))
+            headers={'Access-Control-Allow-Origin': '*'},
+            background=None if 'range' in request.headers or request.query_params.get('delivery') == 'ack' else BackgroundTask(service.store.artifact_delivered, identity, identifier, name))
 
     @app.get("/preview/{signed}")
     async def preview(signed: str):

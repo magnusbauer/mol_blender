@@ -57,19 +57,20 @@ local path. Choose the adapter that matches where the input file is available.
 
 Use `render_structure` with its structured versioned `request`, including a stable opaque `request_key`. Keep that request and the returned job ID, use `render_status` (a read-only wait of up to 25 seconds) until done, then immediately call `render_result`. Do not repeat upload or submission to check progress. Recover a lost response with `recover_render` and the same request, even after the attachment expires. Explicit additional identical renders use opt-in compatibility import/submit tools with `rerender=true` and a new stable key. The complete contract is in [MCP consumer transport](mcp-consumer.md).
 
-Default D2 discovery contains `render_structure`, `render_status`, `render_result`, `cancel_render`, `list_presets`, `preset_details`, `list_recent_renders`, `recover_render`, `recover_transfer` and `available_quota`. Factories expose the four import/submit/structure compatibility tools only with `compatibility=True`; REST compatibility APIs remain. Shared HTTP advertises built-in selection and edits; trusted local/private schemas may also advertise complete style JSON. The compact catalog contains descriptors and a digest, with static eligibility distinct from live availability. Common renders need no catalog or quota preflight. Inputs are automatically deleted after rendering. HTTPS results include a native PNG preview and original-file references for the PNG and explicitly requested outputs; the manifest remains server-side provenance. These are repository/package contracts, not a claim that the published endpoint or any installed host has been upgraded or accepted. Refresh tools after an actual upgrade.
+Default D2 discovery contains `render_structure`, `render_status`, `render_result`, `cancel_render`, `list_presets`, `preset_details`, `list_recent_renders`, `recover_render`, `recover_transfer` and `available_quota`. Factories expose the four import/submit/structure compatibility tools only with `compatibility=True`; REST compatibility APIs remain. Shared HTTP advertises built-in selection and edits; trusted local/private schemas may also advertise complete style JSON. The compact catalog contains descriptors and a digest, with static eligibility distinct from live availability. Common renders need no catalog or quota preflight. Inputs are automatically deleted after rendering. HTTPS results include a native PNG preview and original-file references for the PNG and explicitly requested outputs; the manifest and any frame archive are also offered for saving. These are repository/package contracts, not a claim that the published endpoint or any installed host has been upgraded or accepted. Refresh tools after an actual upgrade.
 
 ChatGPT receives a bounded inline PNG preview and native file references for the
 full-resolution image and explicitly requested outputs. The assistant displays the
 image with a short description; it does not provide Markdown download links or
-ask the user to download promptly. The manifest is retained for provenance and is
-not automatically imported as an extra attachment.
+ask the user to download promptly. The manifest and any generated frame archive are included for saving alongside
+the visuals and an explicitly requested Blender scene.
 
 A native file reference lets the host fetch the original file. Its signed URL is
 transport metadata, not a link to include in the answer. Returning the tool result
-alone does not confirm import: `file_import_confirmed` remains false. The server
-removes a file after its HTTP transfer completes, or when its existing fifteen-
-minute retention expires. ChatGPT controls its own storage and may request an
+alone does not confirm import: `file_import_confirmed` remains false. ChatGPT handoff URLs use non-consuming reads so host import and widget saving
+can both finish. The server retains these copies until acknowledgement, explicit
+deletion, or the existing fifteen-minute expiry. Legacy download URLs still
+consume files after transfer. ChatGPT controls its own storage and may request an
 attachment-import confirmation. Permanent ChatGPT retention is not guaranteed by
 an MCP response or by displaying a preview.
 
@@ -79,7 +80,7 @@ returns `presentation_status="file_handoff"` and `presentation_failed` while
 preserving the file references. It cannot change render success or submit another
 render. Do not repeatedly retrieve results to fix hidden images or failed imports.
 `render_result` now binds a dedicated image viewer. Its bounded PNG bytes travel
-in widget-only result metadata, with no network fetch or download buttons. It
+in widget-only result metadata, with download controls for all outputs. It
 supports MCP Apps result notifications and ChatGPT's wrapped result metadata;
 missing data produces a visible error rather than an indefinite loading screen.
 The legacy URL-based widget remains opt-in. Refresh the connection after this
@@ -108,9 +109,8 @@ settings, never rotate or repaint the returned PNG.
 for this consumer interface are 960×540, 48 samples, 3 seconds, 12 fps; explicit
 settings win. PyMOL and ordinary renderer animation defaults are unchanged.
 The inline viewer loads the GIF through an expiring signed preview URL. GIF bytes
-stay outside the tool response, and GIF results do not request file materialization.
-MP4 remains a native attachment when GIF is explicitly false. Internal frame
-archives are not imported. Preview reads retain the artifact until normal expiry;
+stay outside the tool response, and all generated formats receive file references for host import.
+Frame archives are also included. Preview reads retain the artifact until normal expiry;
 inline display does not establish permanent ChatGPT storage. GIF, MP4 and PNG
 download buttons are available in the viewer until the original artifact expires.
 Larger defaults improve detail but increase rendering time.
@@ -127,9 +127,15 @@ The MCP server carries the workflow instructions for direct developer connection
 Updating a repository SKILL.md alone does not update such a connection. Packaged
 plugins carry the corresponding skill; refresh tool metadata after deployment.
 
-The viewer automatically attempts to save available PNG, GIF and MP4 files when ChatGPT exposes file upload
+The viewer automatically attempts to save every available output (PNG, GIF, MP4, Blender scene, manifest and frame archive) when ChatGPT exposes file upload
 and widget-state APIs. Wait for the per-format **saved in ChatGPT** confirmation. Failed attempts expose
 **Retry saving files**; repeated notifications do not upload duplicates. Each successfully uploaded file gets its own host file ID for later access.
+The viewer saves those IDs in widget state, requests file-library storage when
+available, and restores download controls from state even without the original
+tool metadata. Saved images use fresh host URLs instead of expired server URLs.
+A failed state write can be retried without repeating a successful upload.
+Uploads over the viewer’s 64 MiB limit or formats rejected by ChatGPT remain
+explicitly unsaved and available through the temporary download controls.
 This does not guarantee permanent retention; ChatGPT may reject a file format. If saving fails or the
 host lacks the API, use the download controls. Actual host storage must be verified
 in ChatGPT; browser tests use a simulated upload API.

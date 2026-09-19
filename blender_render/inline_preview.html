@@ -22,29 +22,90 @@ let saveSource = null;
 let saveFiles = [];
 let saving = false;
 const autoSaveAttempts = new Set();
+const pendingUploads = new Map();
+let restoredFileId = null;
 const saveButton = document.getElementById('save');
 const savedStatus = document.getElementById('saved');
 let storedImage = window.openai?.widgetState?.privateContent?.savedImage || null;
 let savedFiles = window.openai?.widgetState?.privateContent?.savedFiles || {};
 if (storedImage && !savedFiles['render.png']) savedFiles['render.png'] = storedImage;
-const fileTypes = {'render.png':'image/png','render.gif':'image/gif','render.mp4':'video/mp4'};
-function alreadySaved(file) { return savedFiles[file.name]?.jobId === file.jobId; }
+const fileTypes = {'render.png':'image/png','render.gif':'image/gif','render.mp4':'video/mp4',
+  'render.blend':'application/octet-stream','manifest.json':'application/json','frames.zip':'application/zip'};
+function alreadySaved(file) { return !!savedFiles[file.name]?.fileId && savedFiles[file.name].jobId === file.jobId; }
+function hydrateState(state) {
+  const files = state?.privateContent?.savedFiles || {};
+  for (const [name, file] of Object.entries(files)) {
+    if (fileTypes[name] && typeof file?.fileId === 'string' && file.fileId &&
+        (!saveSource || file.jobId === saveSource.jobId)) savedFiles[name] = file;
+  }
+  storedImage = savedFiles['render.png'] || storedImage;
+}
+function downloadControls(links = []) {
+  const bar = document.getElementById('downloads');
+  bar.replaceChildren();
+  const entries = new Map();
+  for (const item of links) {
+    try {
+      const url = new URL(item.url);
+      if (fileTypes[item.name] && url.protocol === 'https:' && !url.username && !url.password && url.pathname.startsWith('/download/')) entries.set(item.name, item);
+    } catch (_) {}
+  }
+  for (const [name, file] of Object.entries(savedFiles)) {
+    if (!saveSource || file.jobId === saveSource.jobId) entries.set(name, {...entries.get(name), name, jobId:file.jobId});
+  }
+  for (const item of entries.values()) {
+    if (!fileTypes[item.name]) continue;
+    let href = null;
+    try {
+      const url = new URL(item.url);
+      if (url.protocol === 'https:' && !url.username && !url.password && url.pathname.startsWith('/download/')) href = url.href;
+    } catch (_) {}
+    const saved = savedFiles[item.name];
+    if (!href && !saved?.fileId) continue;
+    const link = document.createElement('a');
+    link.textContent = 'Download ' + item.name.split('.').pop().toUpperCase();
+    link.href = href || '#'; link.target = '_blank'; link.rel = 'noopener noreferrer';
+    link.addEventListener('click', async event => {
+      const file = savedFiles[item.name];
+      if (file?.fileId && (!item.jobId || file.jobId === item.jobId)) {
+        event.preventDefault();
+        try {
+          const {downloadUrl} = await window.openai.getFileDownloadUrl({fileId:file.fileId});
+          const url = new URL(downloadUrl);
+          if (url.protocol !== 'https:' || url.username || url.password) throw new Error();
+          if (window.openai?.openExternal) window.openai.openExternal({href:url.href});
+          else window.open(url.href, '_blank', 'noopener,noreferrer');
+        } catch (_) { savedStatus.hidden=false; savedStatus.textContent='The saved file could not be opened.'; }
+      } else if (href && window.openai?.openExternal) {
+        event.preventDefault(); window.openai.openExternal({href});
+      }
+    });
+    bar.append(link);
+  }
+  bar.hidden = !bar.children.length;
+}
+let downloadLinks = [];
 async function restoreSavedImage() {
   const saved = savedFiles['render.gif'] || storedImage;
-  if (!saved?.fileId || !window.openai?.getFileDownloadUrl) return;
+  if (!saved?.fileId || !window.openai?.getFileDownloadUrl || restoredFileId === saved.fileId) return;
+  restoredFileId = saved.fileId;
   try {
     const {downloadUrl} = await window.openai.getFileDownloadUrl({fileId:saved.fileId});
     const url = new URL(downloadUrl);
-    if (url.protocol !== 'https:') return;
+    if (url.protocol !== 'https:' || url.username || url.password) throw new Error();
     image.src = url.href;
     savedStatus.hidden = false;
     savedStatus.textContent = 'Image saved in ChatGPT.';
   } catch (_) {
+    restoredFileId = null;
     savedStatus.hidden = false;
     savedStatus.textContent = 'The saved image could not be opened in this session.';
   }
 }
 function refreshSaving() {
+  hydrateState(window.openai?.widgetState);
+  downloadControls(downloadLinks);
+  if (savedFiles['render.gif'] || storedImage) restoreSavedImage();
   if (!saveSource) return;
   const available = !!(window.openai?.uploadFile && window.openai?.setWidgetState);
   saveButton.hidden = !available;
@@ -57,8 +118,7 @@ function refreshSaving() {
 }
 function autoSave() {
   if (!saveSource || saving || saveFiles.every(alreadySaved) ||
-      autoSaveAttempts.has(saveSource.jobId) || !window.openai?.uploadFile || !window.openai?.setWidgetState) return;
-  autoSaveAttempts.add(saveSource.jobId);
+      saveFiles.every(file => alreadySaved(file) || autoSaveAttempts.has(file.jobId + '/' + file.name)) || !window.openai?.uploadFile || !window.openai?.setWidgetState) return;
   saveButton.onclick();
 }
 saveButton.onclick = async () => {
@@ -68,21 +128,32 @@ saveButton.onclick = async () => {
   const failed = [];
   for (const source of sources) {
     if (alreadySaved(source)) continue;
+    const key = source.jobId + '/' + source.name;
+    autoSaveAttempts.add(key);
     savedStatus.textContent = 'Saving ' + source.name.split('.').pop().toUpperCase() + ' to ChatGPT…';
     try {
-      const url = new URL(source.url);
-      if (!fileTypes[source.name] || url.protocol !== 'https:' || url.username || url.password || !url.pathname.startsWith('/preview/')) throw new Error();
-      const response = await fetch(url.href, {credentials:'omit', signal:AbortSignal.timeout(30000)});
-      if (!response.ok || !response.headers.get('content-type')?.startsWith(fileTypes[source.name])) throw new Error();
-      const blob = await response.blob();
-      if (blob.size > 64 * 1024 * 1024) throw new Error();
-      const {fileId} = await window.openai.uploadFile(new File([blob], source.name, {type:fileTypes[source.name]}), {library:true});
-      if (typeof fileId !== 'string' || !fileId) throw new Error();
+      let fileId = pendingUploads.get(key);
+      if (!fileId) {
+        const url = new URL(source.url);
+        const readable = url.pathname.startsWith('/preview/') ||
+          (url.pathname.startsWith('/download/') && url.searchParams.get('delivery') === 'ack');
+        if (!fileTypes[source.name] || url.protocol !== 'https:' || url.username || url.password || !readable) throw new Error();
+        const response = await fetch(url.href, {credentials:'omit', signal:AbortSignal.timeout(30000)});
+        if (!response.ok || !response.headers.get('content-type')?.startsWith(fileTypes[source.name])) throw new Error();
+        const blob = await response.blob();
+        if (blob.size > 64 * 1024 * 1024) throw new Error();
+        ({fileId} = await window.openai.uploadFile(new File([blob], source.name, {type:fileTypes[source.name]}), {library:true}));
+        if (typeof fileId !== 'string' || !fileId) throw new Error();
+        pendingUploads.set(key, fileId);
+      }
+      if (saveSource.jobId !== source.jobId) break;
       const nextFiles = {...savedFiles, [source.name]:{fileId, jobId:source.jobId}};
       const nextImage = nextFiles['render.png'] || null;
-      window.openai.setWidgetState({modelContent:'Saved render files: ' + Object.keys(nextFiles).join(', '),
+      await window.openai.setWidgetState({modelContent:'Saved render files: ' + Object.keys(nextFiles).join(', '),
         privateContent:{savedImage:nextImage, savedFiles:nextFiles}, imageIds:nextImage ? [nextImage.fileId] : []});
       savedFiles = nextFiles; storedImage = nextImage;
+      pendingUploads.delete(key);
+      downloadControls(downloadLinks);
     } catch (_) { failed.push(source.name); }
   }
   const confirmed = sources.filter(alreadySaved).map(f => f.name.split('.').pop().toUpperCase());
@@ -91,6 +162,7 @@ saveButton.onclick = async () => {
   saveButton.disabled = !failed.length;
   saveButton.textContent = failed.length ? 'Retry saving files' : 'Files saved';
   saving = false; resize();
+  autoSave();
 };
 function resize() {
   const height = Math.ceil(document.getElementById('render').getBoundingClientRect().height);
@@ -104,7 +176,12 @@ function render(envelope) {
   const result = envelope.mcp_tool_result || envelope.call_tool_result || envelope;
   const legacy = result._meta?.saveImage || result.saveImage;
   const files = result._meta?.saveFiles || result.saveFiles || (legacy ? [{...legacy,name:'render.png',mimeType:'image/png'}] : []);
-  const source = files[0];
+  const source = files.find(file => fileTypes[file.name]);
+  if (source) {
+    savedFiles = Object.fromEntries(Object.entries(savedFiles).filter(([,file]) => file.jobId === source.jobId));
+    storedImage = savedFiles['render.png'] || null;
+    if (saveSource && source.jobId !== saveSource.jobId) restoredFileId = null;
+  }
   if (files.length) saveFiles = files.filter(file => fileTypes[file.name]);
   if (source) {
     saveSource = source;
@@ -113,37 +190,11 @@ function render(envelope) {
     refreshSaving();
   }
   const links = result._meta?.downloads || result.downloads;
-  if (Array.isArray(links)) {
-    const bar = document.getElementById('downloads');
-    bar.replaceChildren();
-    for (const item of links) {
-      if (!['render.gif','render.mp4','render.png'].includes(item.name)) continue;
-      try {
-        const url = new URL(item.url);
-        if (url.protocol !== 'https:' || url.username || url.password || !url.pathname.startsWith('/download/')) continue;
-        const link = document.createElement('a');
-        link.textContent = 'Download ' + item.name.split('.').pop().toUpperCase();
-        link.href = url.href; link.target = '_blank'; link.rel = 'noopener noreferrer';
-        link.addEventListener('click', async event => {
-          const saved = savedFiles[item.name];
-          if (saved?.fileId && window.openai?.getFileDownloadUrl) {
-            event.preventDefault();
-            try {
-              const {downloadUrl} = await window.openai.getFileDownloadUrl({fileId:saved.fileId});
-              if (window.openai?.openExternal) window.openai.openExternal({href:downloadUrl});
-              else window.open(downloadUrl, '_blank', 'noopener,noreferrer');
-            } catch (_) { savedStatus.hidden=false; savedStatus.textContent='The saved file could not be opened.'; }
-            return;
-          }
-          if (window.openai?.openExternal) {
-            event.preventDefault(); window.openai.openExternal({href:link.href});
-          }
-        });
-        bar.append(link);
-      } catch (_) {}
-    }
-    bar.hidden = !bar.children.length;
-    resize();
+  if (Array.isArray(links)) downloadLinks = links;
+  downloadControls(downloadLinks);
+  if ((savedFiles['render.gif'] || storedImage) && window.openai?.getFileDownloadUrl) {
+    restoreSavedImage();
+    return;
   }
   const preview = result._meta?.preview || result.preview ||
     result.content?.find(item => item.type === 'image' && ['image/png','image/gif'].includes(item.mimeType));
@@ -193,6 +244,7 @@ window.addEventListener('message', event => {
   }
 });
 window.addEventListener('openai:set_globals', event => {
+  hydrateState(event.detail?.globals?.widgetState);
   render(event.detail?.globals?.toolResponseMetadata);
   refreshSaving();
 });
@@ -203,6 +255,7 @@ const bridgeTimer = setInterval(() => {
     refreshSaving(); clearInterval(bridgeTimer);
   } else if (++bridgeChecks >= 30) clearInterval(bridgeTimer);
 }, 1000);
+downloadControls();
 render(window.openai?.toolResponseMetadata);
 render(window.openai?.toolOutput);
 if ((storedImage || savedFiles['render.gif']) && !image.getAttribute('src')) restoreSavedImage();

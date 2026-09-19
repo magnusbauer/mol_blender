@@ -52,7 +52,7 @@ def test_unavailable_animation_stops_before_download(consumer):
 
 
 @pytest.mark.parametrize('gif_requested', [True, False])
-def test_single_animation_job_returns_gif_not_frame_archive(consumer, gif_requested):
+def test_single_animation_job_returns_all_outputs_for_saving(consumer, gif_requested):
     service, conversions, downloads = consumer
     service.store.policy = replace(service.store.policy, allow_animation=True)
     original_render = service.backend.render
@@ -73,7 +73,7 @@ def test_single_animation_job_returns_gif_not_frame_archive(consumer, gif_reques
     service._execute(service.store.claim())
     response = call(server(service), 'render_result', {'job_id':job['job_id']})
     assert record(response)['complete']
-    assert {d['name'] for d in response.meta['downloads']} == ({'render.gif','render.mp4','render.png'} if gif_requested else {'render.mp4','render.png'})
+    assert {d['name'] for d in response.meta['downloads']} == ({'render.gif','render.mp4','render.png','frames.zip','manifest.json'} if gif_requested else {'render.mp4','render.png','frames.zip','manifest.json'})
     assert 'downloads' not in record(response)
     assert {f['name'] for f in response.meta['saveFiles']} == {f['name'] for f in response.meta['downloads']}
     assert 'saveFiles' not in record(response)
@@ -81,7 +81,7 @@ def test_single_animation_job_returns_gif_not_frame_archive(consumer, gif_reques
     if gif_requested:
         assert 'data' not in response.meta['preview']
         assert '/preview/' in response.meta['preview']['url']
-        assert len(json.dumps(response.meta)) < 4096
+        assert len(json.dumps(response.meta)) < 8192
         assert record(response)['delivery_mode'] == 'inline_viewer'
         from fastapi.testclient import TestClient
         from urllib.parse import urlsplit
@@ -96,14 +96,14 @@ def test_single_animation_job_returns_gif_not_frame_archive(consumer, gif_reques
                 assert fetched.headers['content-type'] == 'image/gif'
             mp4 = next(f for f in response.meta['saveFiles'] if f['name'] == 'render.mp4')
             for _ in range(2):
-                video = api.get(urlsplit(mp4['url']).path)
+                video = api.get(mp4['url'])
                 assert video.status_code == 200 and video.content == b'fake backend mp4'
                 assert video.headers['content-type'] == 'video/mp4'
                 assert video.headers['access-control-allow-origin'] == '*'
             assert api.get(route + 'tampered').status_code == 401
             assert (service.store.artifact_root(job['job_id']) / 'render.gif').exists()
 
-    assert {item.name for item in response.content if item.type=='resource_link'} == ({'render.png','render.mp4','render.gif'} if gif_requested else {'render.png','render.mp4'})
+    assert {item.name for item in response.content if item.type=='resource_link'} == ({'render.png','render.mp4','render.gif','frames.zip','manifest.json'} if gif_requested else {'render.png','render.mp4','frames.zip','manifest.json'})
     assert len(service.backend.calls)==len(conversions)==len(downloads)==1
 
 

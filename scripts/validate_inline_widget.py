@@ -121,6 +121,48 @@ with sync_playwright() as p:
  page.wait_for_function("window.savedState.privateContent.savedFiles['render.mp4']?.fileId")
  assert page.evaluate('window.counts')=={'render.png':1,'render.gif':1,'render.mp4':2}
  page.close();print('PNG/GIF/MP4 partial save and retry passed')
+ # Every output survives a state-only reopen, including late state hydration.
+ formats={'render.png':'image/png','render.gif':'image/gif','render.mp4':'video/mp4',
+          'render.blend':'application/octet-stream','manifest.json':'application/json','frames.zip':'application/zip'}
+ page=browser.new_page();page.set_content(html)
+ for name,mime in formats.items():
+  page.route('https://render.example.org/download/'+name+'?delivery=ack',
+    lambda route,request,mime=mime:route.fulfill(content_type=mime,body=buf.getvalue()))
+ page.evaluate("""() => {window.uploads=[];window.rejectState=true;window.openai={
+   uploadFile:async file=>{window.uploads.push(file.name);return {fileId:'saved-'+file.name};},
+   setWidgetState:async state=>{if(window.rejectState)throw Error('state unavailable');window.savedState=state;}
+ }}""")
+ files=[{'jobId':'all','name':name,'url':'https://render.example.org/download/'+name+'?delivery=ack'} for name in formats]
+ page.evaluate("r=>window.postMessage({jsonrpc:'2.0',method:'ui/notifications/tool-result',params:r},'*')",{'_meta':{'saveFiles':files}})
+ page.wait_for_function("document.getElementById('saved').textContent.includes('not saved')")
+ assert page.evaluate('window.savedState') is None
+ assert 'saved in ChatGPT' not in page.locator('#saved').inner_text()
+ page.evaluate('window.rejectState=false')
+ page.get_by_text('Retry saving files',exact=True).click()
+ page.wait_for_function("document.getElementById('save').textContent==='Files saved'")
+ assert page.evaluate('window.uploads')==list(formats) # State retry reuses uploaded IDs.
+ state=page.evaluate('window.savedState')
+ assert set(state['privateContent']['savedFiles'])==set(formats)
+ page.close()
+ for late in (False,True):
+  page=browser.new_page();requests=[];page.on('request',lambda r:requests.append(r.url))
+  page.route('https://files.oaiusercontent.com/restored',lambda route:route.fulfill(content_type='image/png',body=buf.getvalue()))
+  page.goto('about:blank')
+  page.evaluate("""state=>window.openai={widgetState:state,
+   getFileDownloadUrl:async({fileId})=>{window.restoredId=fileId;return {downloadUrl:'https://files.oaiusercontent.com/restored'};},
+   openExternal:({href})=>window.opened=href}""",None if late else state)
+  page.set_content(html)
+  if late:
+   page.evaluate("state=>window.dispatchEvent(new CustomEvent('openai:set_globals',{detail:{globals:{widgetState:state}}}))",state)
+  page.wait_for_function("document.getElementById('preview').naturalWidth===80")
+  assert page.evaluate('window.restoredId')=='saved-render.gif'
+  assert page.locator('#downloads a').count()==6
+  page.get_by_text('Download ZIP',exact=True).click()
+  page.wait_for_function("window.restoredId==='saved-frames.zip'")
+  assert page.evaluate('window.opened')=='https://files.oaiusercontent.com/restored'
+  assert all(url.startswith('https://files.oaiusercontent.com/') for url in requests)
+  page.close()
+ print('all outputs, failed state commit retry, and immediate/delayed state-only reopen passed')
  # Exercise the actual parent/iframe initialization sequence, not only globals.
  page=browser.new_page()
  page.set_content('<iframe id="app" style="height:1000px" sandbox="allow-scripts"></iframe>')
