@@ -1,4 +1,5 @@
 """ChatGPT preset fidelity, one-job animations and direct GIF presentation."""
+import json
 import base64
 import io
 from dataclasses import replace
@@ -74,8 +75,25 @@ def test_single_animation_job_returns_gif_not_frame_archive(consumer, gif_reques
     assert record(response)['complete']
     assert response.meta['preview']['mimeType'] == ('image/gif' if gif_requested else 'image/png')
     if gif_requested:
-        assert base64.b64decode(response.meta['preview']['data']) == gif
-    assert [item.name for item in response.content if item.type=='resource_link'] == ['render.gif' if gif_requested else 'render.mp4']
+        assert 'data' not in response.meta['preview']
+        assert '/preview/' in response.meta['preview']['url']
+        assert len(json.dumps(response.meta)) < 4096
+        assert record(response)['delivery_mode'] == 'inline_viewer'
+        from fastapi.testclient import TestClient
+        from urllib.parse import urlsplit
+        from blender_render.api import create_app
+        from test_jobs_api import TOKEN
+        with TestClient(create_app(service, token=TOKEN, signing_key='x' * 48,
+                                  public_url='https://render.example.org')) as api:
+            route = urlsplit(response.meta['preview']['url']).path
+            for _ in range(2):
+                fetched = api.get(route)
+                assert fetched.status_code == 200 and fetched.content == gif
+                assert fetched.headers['content-type'] == 'image/gif'
+            assert api.get(route + 'tampered').status_code == 401
+            assert (service.store.artifact_root(job['job_id']) / 'render.gif').exists()
+
+    assert [item.name for item in response.content if item.type=='resource_link'] == ([] if gif_requested else ['render.mp4'])
     assert len(service.backend.calls)==len(conversions)==len(downloads)==1
 
 

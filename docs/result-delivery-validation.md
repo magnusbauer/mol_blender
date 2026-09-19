@@ -1,5 +1,19 @@
 # Result delivery validation
 
+## Compact GIF viewer follow-up
+
+A subsequent ChatGPT attempt reached file materialization and then reported the
+conversation-length limit. Live read-only records show the latest render completed
+in 117.2 seconds and produced a 1,782,692-byte GIF. The exact ChatGPT failure cause
+is not visible from the service. Previously the full GIF appeared as base64 in
+widget metadata and as a native file-import reference. The updated GIF response
+contains neither: its viewer receives only a signed preview URL, while a bounded
+PNG image remains available to the model. The preview route verifies ownership
+through the signature and preserves the artifact until its existing expiry.
+There are no written download links, GIF import prompts requested by this tool,
+or new GPU jobs for preview access. Permanent storage in ChatGPT is not promised.
+The earlier embedded-GIF evidence below describes the superseded implementation.
+
 The September 7 record below describes the former link-based flow. The current
 `codex/chatgpt-inline-results` change replaces those written links with an inline
 preview and native original-file handoff. Returning a reference does not confirm

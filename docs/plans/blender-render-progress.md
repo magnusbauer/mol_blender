@@ -1,5 +1,19 @@
 # Blender Render implementation progress
 
+## Compact GIF delivery — September 18 follow-up
+
+The user reported a conversation-length error at GIF materialization. Read-only
+live inspection confirmed the latest render completed in 117.2 seconds, producing
+a 1,782,692-byte GIF. The previous response embedded its base64 representation in
+widget metadata and also requested native import. The host's precise internal
+failure is unobservable; both heavy delivery paths are now removed for GIFs.
+The viewer loads a signed, expiring GIF preview URL; no animation bytes enter the
+MCP envelope and no GIF resource link requests materialization. PNG fallback and
+explicit scene attachments remain. Signed preview reads preserve the artifact
+until normal expiry, without acknowledging download or initiating compute.
+The viewer CSP permits only the configured render origin; invalid URL schemes
+are rejected. Actual ChatGPT playback and durable host storage remain unverified.
+
 ## Preset fidelity and direct GIF workflow — 2026-09-18
 
 The supplied ChatGPT transcript exposed forced transparency, invented background

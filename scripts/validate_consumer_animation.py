@@ -41,7 +41,8 @@ try:
   async with Client(mcp) as client:return await client.call_tool('render_result',{'job_id':job['job_id']})
  result=asyncio.run(result())
  assert result.meta['preview']['mimeType']=='image/gif'
- assert [x.name for x in result.content if x.type=='resource_link']==['render.gif']
+ assert not [x for x in result.content if x.type=='resource_link']
+ assert 'data' not in result.meta['preview'] and '/preview/' in result.meta['preview']['url']
  for name in ('render.png','render.gif','render.mp4','manifest.json'):
   path,_=service.artifact('validation',job['job_id'],name);(root/name).write_bytes(path.read_bytes())
  from PIL import Image

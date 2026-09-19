@@ -54,14 +54,14 @@ def test_native_image_handoff_no_prose_links_and_fetch_cleanup(consumer):
     api.close()
 
 
-def test_viewer_discovery_has_no_network_dependency(consumer):
+def test_viewer_discovery_allows_only_render_origin(consumer):
     import asyncio
     from fastmcp import Client
     from blender_render.mcp_server import INLINE_PREVIEW_URI
     async def run():
         async with Client(server(consumer[0])) as client:
             resource = (await client.read_resource(INLINE_PREVIEW_URI))[0]
-            assert resource.meta['ui']['csp'] == {'connectDomains': [], 'resourceDomains': []}
+            assert resource.meta['ui']['csp'] == {'connectDomains': [], 'resourceDomains': ['https://render.example.org']}
             assert "'data:' + preview.mimeType + ';base64,'" in resource.text
             assert 'download_url' not in resource.text
     asyncio.run(run())

@@ -107,11 +107,12 @@ settings, never rotate or repaint the returned PNG.
 `request.animation="360", request.gif=true` submits one animation job. Defaults
 for this consumer interface are 640×360, 32 samples, 3 seconds, 12 fps; explicit
 settings win. PyMOL and ordinary renderer animation defaults are unchanged.
-The result returns the GIF as its primary native attachment (MP4 when GIF is
-explicitly false), without automatically importing internal frame archives. The
-viewer embeds GIFs up to 2 MiB directly; larger animations retain a PNG preview
-and the original GIF attachment. Import approval and durable host storage remain
-ChatGPT-controlled. GIF/MP4 flatten transparency onto white; PNG preserves alpha.
+The inline viewer loads the GIF through an expiring signed preview URL. GIF bytes
+stay outside the tool response, and GIF results do not request file materialization.
+MP4 remains a native attachment when GIF is explicitly false. Internal frame
+archives are not imported. Preview reads retain the artifact until normal expiry;
+inline display does not establish permanent ChatGPT storage.
+GIF/MP4 flatten transparency onto white; PNG preserves alpha.
 
 Public shared animation is disabled by default. The operator can explicitly enable
 animation for a single restricted staging user by setting

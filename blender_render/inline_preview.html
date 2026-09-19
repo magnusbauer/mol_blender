@@ -25,6 +25,15 @@ function render(envelope) {
   const result = envelope.mcp_tool_result || envelope.call_tool_result || envelope;
   const preview = result._meta?.preview || result.preview ||
     result.content?.find(item => item.type === 'image' && ['image/png','image/gif'].includes(item.mimeType));
+  if (preview?.mimeType === 'image/gif' && typeof preview.url === 'string' && preview.url.length < 4096) {
+    try {
+      const url = new URL(preview.url);
+      if (url.protocol === 'https:' && !url.username && !url.password && url.pathname.startsWith('/preview/')) {
+        if (image.getAttribute('src') !== url.href) image.src = url.href;
+        return;
+      }
+    } catch (_) {}
+  }
   if (['image/png','image/gif'].includes(preview?.mimeType) && typeof preview.data === 'string' &&
       preview.data.length <= 2796204 && /^[A-Za-z0-9+/]+={0,2}$/.test(preview.data)) {
     const source = 'data:' + preview.mimeType + ';base64,' + preview.data;
@@ -45,7 +54,7 @@ image.onerror = () => {
   shown = false;
   image.hidden = true;
   status.hidden = false;
-  status.textContent = 'The image could not be displayed. Rendering has not been repeated.';
+  status.textContent = 'The preview is unavailable or has expired. Rendering has not been repeated.';
   resize();
 };
 window.addEventListener('message', event => {
