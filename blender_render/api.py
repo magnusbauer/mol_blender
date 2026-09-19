@@ -403,8 +403,8 @@ def create_app(service: RenderService, *, token: str, public_url: str = "", sign
     @app.get("/preview/{signed}")
     async def preview(signed: str):
         identity, identifier, name = downloads.verify(signed)
-        if name not in {'render.png', 'render.gif'}:
-            raise JobError('Only PNG and GIF previews are available.', 'not_found', 404)
+        if name not in {'render.png', 'render.gif', 'render.mp4'}:
+            raise JobError('Only PNG, GIF and MP4 previews are available.', 'not_found', 404)
         path, mime = service.artifact(identity, identifier, name)
         return FileResponse(path, media_type=mime, headers={'Access-Control-Allow-Origin': '*'})
 

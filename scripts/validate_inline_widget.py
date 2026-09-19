@@ -80,7 +80,7 @@ with sync_playwright() as p:
   page.wait_for_timeout(100)
   assert page.evaluate('window.uploadCount') == 1
   if fail:
-   page.get_by_text('Retry saving image',exact=True).click()
+   page.get_by_text('Retry saving files',exact=True).click()
    page.wait_for_function('window.uploadCount===2')
   page.close()
  page=browser.new_page()
@@ -91,6 +91,24 @@ with sync_playwright() as p:
  page.wait_for_function("document.getElementById('preview').naturalWidth===80")
  assert page.evaluate('window.restoredId')=='file-saved'
  page.close();print('automatic save, duplicate suppression, explicit retry, and restore passed')
+ # Multi-file partial failure: a retry must not re-upload successful formats.
+ page=browser.new_page();page.set_content(html)
+ for ext,mime in [('png','image/png'),('gif','image/gif'),('mp4','video/mp4')]:
+  page.route('https://render.example.org/preview/'+ext,lambda route,request,mime=mime:route.fulfill(content_type=mime,body=b'file-test-bytes'))
+ page.evaluate("""() => {window.counts={};window.rejectVideo=true;window.openai={
+  uploadFile:async file=>{window.counts[file.name]=(window.counts[file.name]||0)+1;if(file.type==='video/mp4'&&window.rejectVideo)throw Error('format unavailable');return {fileId:'file-'+file.name};},
+  setWidgetState:state=>window.savedState=state
+ }}""")
+ files=[{'jobId':'movie','name':'render.'+ext,'mimeType':mime,'url':'https://render.example.org/preview/'+ext} for ext,mime in [('png','image/png'),('gif','image/gif'),('mp4','video/mp4')]]
+ page.evaluate("r=>window.postMessage({jsonrpc:'2.0',method:'ui/notifications/tool-result',params:r},'*')",{'_meta':{'saveFiles':files}})
+ page.wait_for_function("document.getElementById('saved').textContent.includes('render.mp4 not saved')")
+ assert set(page.evaluate('Object.keys(window.savedState.privateContent.savedFiles)'))=={'render.png','render.gif'}
+ assert page.evaluate('window.savedState.imageIds')==['file-render.png']
+ page.evaluate('window.rejectVideo=false')
+ page.get_by_text('Retry saving files',exact=True).click()
+ page.wait_for_function("window.savedState.privateContent.savedFiles['render.mp4']?.fileId")
+ assert page.evaluate('window.counts')=={'render.png':1,'render.gif':1,'render.mp4':2}
+ page.close();print('PNG/GIF/MP4 partial save and retry passed')
  # Exercise the actual parent/iframe initialization sequence, not only globals.
  page=browser.new_page()
  page.set_content('<iframe id="app" style="height:1000px" sandbox="allow-scripts"></iframe>')

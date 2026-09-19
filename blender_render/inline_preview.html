@@ -19,15 +19,21 @@ const image = document.getElementById('preview');
 const status = document.getElementById('status');
 let shown = false;
 let saveSource = null;
+let saveFiles = [];
 let saving = false;
 const autoSaveAttempts = new Set();
 const saveButton = document.getElementById('save');
 const savedStatus = document.getElementById('saved');
 let storedImage = window.openai?.widgetState?.privateContent?.savedImage || null;
+let savedFiles = window.openai?.widgetState?.privateContent?.savedFiles || {};
+if (storedImage && !savedFiles['render.png']) savedFiles['render.png'] = storedImage;
+const fileTypes = {'render.png':'image/png','render.gif':'image/gif','render.mp4':'video/mp4'};
+function alreadySaved(file) { return savedFiles[file.name]?.jobId === file.jobId; }
 async function restoreSavedImage() {
-  if (!storedImage?.fileId || !window.openai?.getFileDownloadUrl) return;
+  const saved = savedFiles['render.gif'] || storedImage;
+  if (!saved?.fileId || !window.openai?.getFileDownloadUrl) return;
   try {
-    const {downloadUrl} = await window.openai.getFileDownloadUrl({fileId:storedImage.fileId});
+    const {downloadUrl} = await window.openai.getFileDownloadUrl({fileId:saved.fileId});
     const url = new URL(downloadUrl);
     if (url.protocol !== 'https:') return;
     image.src = url.href;
@@ -39,35 +45,41 @@ async function restoreSavedImage() {
   }
 }
 function autoSave() {
-  if (!saveSource || saving || storedImage?.jobId === saveSource.jobId ||
+  if (!saveSource || saving || saveFiles.every(alreadySaved) ||
       autoSaveAttempts.has(saveSource.jobId) || !window.openai?.uploadFile || !window.openai?.setWidgetState) return;
   autoSaveAttempts.add(saveSource.jobId);
   saveButton.onclick();
 }
 saveButton.onclick = async () => {
   if (saving || !saveSource || !window.openai?.uploadFile || !window.openai?.setWidgetState) return;
-  const source = {...saveSource};
+  const sources = saveFiles.map(file => ({...file}));
   saving = true; saveButton.disabled = true; savedStatus.hidden = false;
-  savedStatus.textContent = 'Saving image to ChatGPT…';
-  try {
-    const url = new URL(source.url);
-    if (url.protocol !== 'https:' || url.username || url.password || !url.pathname.startsWith('/preview/')) throw new Error();
-    const response = await fetch(url.href, {credentials:'omit', signal:AbortSignal.timeout(30000)});
-    if (!response.ok || !response.headers.get('content-type')?.startsWith('image/png')) throw new Error();
-    const blob = await response.blob();
-    if (blob.size > 64 * 1024 * 1024) throw new Error();
-    const {fileId} = await window.openai.uploadFile(new File([blob], 'molecular-render.png', {type:'image/png'}));
-    if (typeof fileId !== 'string' || !fileId) throw new Error();
-    storedImage = {fileId, jobId:source.jobId};
-    window.openai.setWidgetState({modelContent:'Rendered PNG saved in ChatGPT.',
-      privateContent:{savedImage:storedImage}, imageIds:[fileId]});
-    savedStatus.textContent = 'Image saved in ChatGPT.';
-    saveButton.textContent = 'Image saved';
-  } catch (_) {
-    savedStatus.textContent = 'Image was not saved. It may have expired, or ChatGPT file saving may be unavailable.';
-    saveButton.disabled = false;
-    saveButton.textContent = 'Retry saving image';
-  } finally { saving = false; resize(); }
+  const failed = [];
+  for (const source of sources) {
+    if (alreadySaved(source)) continue;
+    savedStatus.textContent = 'Saving ' + source.name.split('.').pop().toUpperCase() + ' to ChatGPT…';
+    try {
+      const url = new URL(source.url);
+      if (!fileTypes[source.name] || url.protocol !== 'https:' || url.username || url.password || !url.pathname.startsWith('/preview/')) throw new Error();
+      const response = await fetch(url.href, {credentials:'omit', signal:AbortSignal.timeout(30000)});
+      if (!response.ok || !response.headers.get('content-type')?.startsWith(fileTypes[source.name])) throw new Error();
+      const blob = await response.blob();
+      if (blob.size > 64 * 1024 * 1024) throw new Error();
+      const {fileId} = await window.openai.uploadFile(new File([blob], source.name, {type:fileTypes[source.name]}));
+      if (typeof fileId !== 'string' || !fileId) throw new Error();
+      const nextFiles = {...savedFiles, [source.name]:{fileId, jobId:source.jobId}};
+      const nextImage = nextFiles['render.png'] || null;
+      window.openai.setWidgetState({modelContent:'Saved render files: ' + Object.keys(nextFiles).join(', '),
+        privateContent:{savedImage:nextImage, savedFiles:nextFiles}, imageIds:nextImage ? [nextImage.fileId] : []});
+      savedFiles = nextFiles; storedImage = nextImage;
+    } catch (_) { failed.push(source.name); }
+  }
+  const confirmed = sources.filter(alreadySaved).map(f => f.name.split('.').pop().toUpperCase());
+  savedStatus.textContent = (confirmed.length ? confirmed.join(', ') + ' saved in ChatGPT. ' : '') +
+    (failed.length ? failed.join(', ') + ' not saved. Retry or download these files.' : '');
+  saveButton.disabled = !failed.length;
+  saveButton.textContent = failed.length ? 'Retry saving files' : 'Files saved';
+  saving = false; resize();
 };
 function resize() {
   const height = Math.ceil(document.getElementById('render').getBoundingClientRect().height);
@@ -79,11 +91,14 @@ function render(envelope) {
   // ChatGPT wraps the MCP envelope; MCP Apps sends it directly. Older
   // ChatGPT bridges expose the hidden metadata as the value itself.
   const result = envelope.mcp_tool_result || envelope.call_tool_result || envelope;
-  const source = result._meta?.saveImage || result.saveImage;
+  const legacy = result._meta?.saveImage || result.saveImage;
+  const files = result._meta?.saveFiles || result.saveFiles || (legacy ? [{...legacy,name:'render.png',mimeType:'image/png'}] : []);
+  const source = files[0];
+  if (files.length) saveFiles = files.filter(file => fileTypes[file.name]);
   if (source) {
     saveSource = source;
     saveButton.hidden = !(window.openai?.uploadFile && window.openai?.setWidgetState);
-    if (storedImage?.jobId === source.jobId) { saveButton.disabled = true; saveButton.textContent = 'Image saved'; }
+    if (saveFiles.every(alreadySaved)) { saveButton.disabled = true; saveButton.textContent = 'Files saved'; }
     autoSave();
   }
   const links = result._meta?.downloads || result.downloads;
@@ -98,7 +113,17 @@ function render(envelope) {
         const link = document.createElement('a');
         link.textContent = 'Download ' + item.name.split('.').pop().toUpperCase();
         link.href = url.href; link.target = '_blank'; link.rel = 'noopener noreferrer';
-        link.addEventListener('click', event => {
+        link.addEventListener('click', async event => {
+          const saved = savedFiles[item.name];
+          if (saved?.fileId && window.openai?.getFileDownloadUrl) {
+            event.preventDefault();
+            try {
+              const {downloadUrl} = await window.openai.getFileDownloadUrl({fileId:saved.fileId});
+              if (window.openai?.openExternal) window.openai.openExternal({href:downloadUrl});
+              else window.open(downloadUrl, '_blank', 'noopener,noreferrer');
+            } catch (_) { savedStatus.hidden=false; savedStatus.textContent='The saved file could not be opened.'; }
+            return;
+          }
           if (window.openai?.openExternal) {
             event.preventDefault(); window.openai.openExternal({href:link.href});
           }
@@ -142,7 +167,7 @@ image.onerror = () => {
   image.hidden = true;
   status.hidden = false;
   status.textContent = 'The preview is unavailable or has expired. Rendering has not been repeated.';
-  if (storedImage && !image.dataset.restoring) { image.dataset.restoring = 'true'; restoreSavedImage(); }
+  if ((storedImage || savedFiles['render.gif']) && !image.dataset.restoring) { image.dataset.restoring = 'true'; restoreSavedImage(); }
   resize();
 };
 window.addEventListener('message', event => {
@@ -162,7 +187,7 @@ window.addEventListener('openai:set_globals', event => {
 });
 render(window.openai?.toolResponseMetadata);
 render(window.openai?.toolOutput);
-if (storedImage && !image.getAttribute('src')) restoreSavedImage();
+if ((storedImage || savedFiles['render.gif']) && !image.getAttribute('src')) restoreSavedImage();
 if (parent !== window) parent.postMessage({jsonrpc:'2.0',id:'initialize',method:'ui/initialize',params:{
   appInfo:{name:'Blender Render',version:'0.2.0b1'},appCapabilities:{},protocolVersion:'2026-01-26'
 }}, '*');

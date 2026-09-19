@@ -75,6 +75,8 @@ def test_single_animation_job_returns_gif_not_frame_archive(consumer, gif_reques
     assert record(response)['complete']
     assert {d['name'] for d in response.meta['downloads']} == ({'render.gif','render.mp4','render.png'} if gif_requested else {'render.mp4','render.png'})
     assert 'downloads' not in record(response)
+    assert {f['name'] for f in response.meta['saveFiles']} == {f['name'] for f in response.meta['downloads']}
+    assert 'saveFiles' not in record(response)
     assert response.meta['preview']['mimeType'] == ('image/gif' if gif_requested else 'image/png')
     if gif_requested:
         assert 'data' not in response.meta['preview']
@@ -92,6 +94,12 @@ def test_single_animation_job_returns_gif_not_frame_archive(consumer, gif_reques
                 fetched = api.get(route)
                 assert fetched.status_code == 200 and fetched.content == gif
                 assert fetched.headers['content-type'] == 'image/gif'
+            mp4 = next(f for f in response.meta['saveFiles'] if f['name'] == 'render.mp4')
+            for _ in range(2):
+                video = api.get(urlsplit(mp4['url']).path)
+                assert video.status_code == 200 and video.content == b'fake backend mp4'
+                assert video.headers['content-type'] == 'video/mp4'
+                assert video.headers['access-control-allow-origin'] == '*'
             assert api.get(route + 'tampered').status_code == 401
             assert (service.store.artifact_root(job['job_id']) / 'render.gif').exists()
 

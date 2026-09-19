@@ -1,5 +1,27 @@
 # Blender Render implementation progress
 
+## Automatic GIF and MP4 saving — September 19
+
+Viewer v9 automatically saves available PNG, GIF and MP4 files through the host
+upload API. Each confirmed file ID is persisted independently; a rejected format
+does not discard successful uploads, and explicit retry skips successful files.
+Only PNG IDs enter imageIds; all three formats are represented in private file
+state. A saved GIF is preferred when restoring the preview. Download buttons use
+host file IDs when available, instead of expired renderer URLs. Legacy PNG-only
+widget state and source metadata remain supported. Per-file uploads are bounded
+at 64 MiB; files beyond that limit retain their ordinary download option.
+
+Signed non-consuming preview reads now also permit MP4 with its media type and
+credential-free CORS. No frame archive, scene, credentials, or input structure is
+uploaded to ChatGPT by this feature. This does not bypass host permissions or
+establish that every ChatGPT account accepts GIF/MP4; format rejection remains a
+visible per-file failure. No new render was submitted.
+
+Executed: 1,327 repository tests, 89 installed-wheel checks and browser checks
+covering PNG/GIF success, MP4 rejection, retry of MP4 only, saved-file restore and
+duplicate suppression passed. These use simulated host upload APIs; actual
+ChatGPT GIF/MP4 upload and retention remain unverified.
+
 ## Automatic PNG saving — September 19
 
 At the user's request, viewer v8 starts PNG saving automatically when the result

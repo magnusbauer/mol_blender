@@ -127,9 +127,9 @@ The MCP server carries the workflow instructions for direct developer connection
 Updating a repository SKILL.md alone does not update such a connection. Packaged
 plugins carry the corresponding skill; refresh tool metadata after deployment.
 
-The viewer automatically attempts to save the PNG when ChatGPT exposes file upload
-and widget-state APIs. Wait for **Image saved in ChatGPT**. Failed attempts expose
-**Retry saving image**; repeated notifications do not upload duplicates. This stores a host file ID for reopening the PNG later;
-it does not save GIF/MP4 or guarantee permanent retention. If saving fails or the
+The viewer automatically attempts to save available PNG, GIF and MP4 files when ChatGPT exposes file upload
+and widget-state APIs. Wait for the per-format **saved in ChatGPT** confirmation. Failed attempts expose
+**Retry saving files**; repeated notifications do not upload duplicates. Each successfully uploaded file gets its own host file ID for later access.
+This does not guarantee permanent retention; ChatGPT may reject a file format. If saving fails or the
 host lacks the API, use the download controls. Actual host storage must be verified
 in ChatGPT; browser tests use a simulated upload API.
