@@ -22,6 +22,15 @@ Validation: the frozen source suite passed 1,330 tests; the installed wheel outs
 the checkout passed 58 focused checks, including single-session dispatch, no
 POST retry, blocked presentation, and separate runnable/blocked health counts.
 
+Deployment: commit `1aa3d49` is live in owner-restricted staging. The old
+controller was drained through its admin API; read-only inspection confirmed no
+runnable, running or transfer-pending jobs before it was stopped. The replacement
+reports health OK, runnable queue 0, running 0 and blocked jobs 1. Unauthenticated
+MCP still returns 401. Installed and live engine build hashes match
+`f497eeaac5dd51c1aca0e5061ea669a168ca0fc3bba43804f4228e7b469ef677`.
+Read-only inspection confirms the original operation retains execution_unknown
+and its dispatch fence. No replacement GPU render was submitted.
+
 Reference: https://modal.com/docs/guide/servers documents zero-to-one 503 responses,
 sticky routing via Modal-Session-ID and idle scale-down behavior. A fresh actual
 hosted render is a separate gate requiring the user's authenticated connection;
