@@ -1,5 +1,26 @@
 # Blender Render implementation progress
 
+## ChatGPT persistence deployment — September 19
+
+User-authorized deployment of `566cba2` completed to the existing owner-restricted
+staging endpoint through drain/stop/deploy/resume, using the previously tested
+wheel outside the checkout. The old app is stopped; the replacement has one
+controller. Existing deployment credentials and configuration compare identical
+before and after. No hosted render was submitted or blocked operation retried.
+
+Executed live checks: health OK, zero runnable/running jobs, two retained blocked
+jobs; unauthenticated MCP returns 401. Read-only controller inspection confirms
+viewer v11 and engine build
+`6152579d32e220846dd222a46a965edefe1b32befa377041518f9b456d3d6f9e`,
+matching the tested installed wheel. Account restriction and animation owner
+match; deadline remains 1800 seconds. Admission is open. Persisted lifetime
+compute ceiling is $450; controller operations ceiling is $28 with $15.60 spent.
+The existing state Volume was reused; no accounting reset occurred.
+
+Refresh the existing ChatGPT connection and start a fresh conversation for the
+user acceptance test. Real ChatGPT file saving and reopen-after-expiry remain
+unverified until that test is performed.
+
 ## ChatGPT output persistence repair — September 19
 
 The viewer now offers every generated artifact for saving: PNG, GIF, MP4,
