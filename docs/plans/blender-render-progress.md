@@ -28,6 +28,13 @@ file APIs, library upload requests, per-format failures, retry and restoration.
 These host simulations do not establish actual ChatGPT saving or GIF/MP4 format
 acceptance. A new authenticated ChatGPT request remains the end-to-end gate.
 
+Deployed commit `8880f0a` to the existing owner-restricted staging service after
+the normal drain/stop sequence. Live health is OK (0 runnable, 0 running, 1
+retained blocked operation); unauthenticated MCP returns 401. Live viewer URI
+is v10 and the installed/live engine hashes match
+`957701591e1965bd01186bbff8d4ad4f913fec2a7c78d904882685c5f8759faa`.
+No paid render was submitted during these checks.
+
 
 ## GPU handoff reliability — September 19
 
