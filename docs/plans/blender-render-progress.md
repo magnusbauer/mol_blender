@@ -18,6 +18,12 @@ do not show success or record a file ID. Browser checks exercise user initiation
 success, rejected uploads, and restore using a mocked host API. Real ChatGPT file
 upload/storage is still an outstanding host verification gate.
 
+Executed: 1,327 repository tests, 89 installed-wheel checks, and fourteen browser
+cases passed. Deployed `cdf8419` through drain/stop/resume; live viewer v7 and
+engine `820471f915b08703d968eef05c8548ddc6295f6f614a2eead48ccb1988ed1710`
+match the staged package. Health returned 200 with no active/queued jobs;
+unauthenticated MCP returned 401. No GPU render was submitted for this change.
+
 ## Viewer controls and sharper defaults — September 19
 
 The user's screenshot now provides actual ChatGPT inline-display evidence for
