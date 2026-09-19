@@ -62,7 +62,8 @@ worker_secrets = modal.Secret.from_name(APP_NAME + "-worker")
 
 @app.server(name='gpu', image=renderer_image, gpu='L4', cpu=(4,4), memory=8192,
             secrets=[worker_secrets], min_containers=0, max_containers=1,
-            target_concurrency=1, scaledown_window=2,
+            # Keep the readiness-to-render handoff inside one warm-container window.
+            target_concurrency=1, scaledown_window=60,
             startup_timeout=120, exit_grace_period=JOB_TIMEOUT)
 class GPUWorker:
     @modal.enter()

@@ -1,5 +1,32 @@
 # Blender Render implementation progress
 
+## GPU handoff reliability — September 19
+
+Read-only inspection of the reported operation found execution_unknown after
+conversion, with a dispatch fence and no child receipt. The GPU container opened
+its tunnel and closed about 15 seconds later. Provider logs do not establish
+whether a render POST executed, so the old operation is not reset or replayed.
+
+The two-second worker idle window is extended to 60 seconds, and one Modal routing
+session now spans health negotiation and render POST. This mitigates the observed
+readiness-to-dispatch shutdown risk; it is not a retrospective proof of cause.
+The existing 180-second startup reservation covers the 120-second worker startup
+limit plus this 60-second idle tail. Paid POST failures remain non-retriable.
+Safe logs record HTTP status, known condition labels and transport exception type,
+without response bodies, auth headers or molecular data. Consumer presentation
+reports retained conditions as blocked instead of queued; controller state and
+ownership remain unchanged. Health reports runnable queue depth separately from
+retained blocked jobs, so an ambiguous operation does not prevent a safe drain.
+
+Validation: the frozen source suite passed 1,330 tests; the installed wheel outside
+the checkout passed 58 focused checks, including single-session dispatch, no
+POST retry, blocked presentation, and separate runnable/blocked health counts.
+
+Reference: https://modal.com/docs/guide/servers documents zero-to-one 503 responses,
+sticky routing via Modal-Session-ID and idle scale-down behavior. A fresh actual
+hosted render is a separate gate requiring the user's authenticated connection;
+no user token was fabricated and no second writable controller was opened.
+
 ## Automatic GIF and MP4 saving — September 19
 
 Viewer v9 automatically saves available PNG, GIF and MP4 files through the host

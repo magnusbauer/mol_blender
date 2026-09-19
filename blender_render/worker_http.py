@@ -145,6 +145,9 @@ class HTTPBackend:
             except ValueError:
                 data = {}
             condition = data.get('condition') if isinstance(data, dict) else None
+            safe_condition = condition if condition in ('restart_required', 'compatibility_blocked', 'execution_unknown') else 'unspecified'
+            logging.getLogger(__name__).warning('Worker HTTP response status=%s submitted=%s condition=%s',
+                response.status_code, submitted, safe_condition)
             if condition == 'restart_required':
                 exc = RestartRequired('restart_required: replace the affected worker')
                 exc.before_execution = not submitted or data.get('before_execution') is True
@@ -154,7 +157,9 @@ class HTTPBackend:
             if condition == 'execution_unknown' or submitted:
                 raise ExecutionUnknown('HTTP worker execution outcome unknown; no automatic replay')
         protect('submission')
-        with httpx.Client(headers=self.headers, timeout=self.timeout+30) as client:
+        # Bind readiness and render to the same Modal routing session.
+        headers = {**self.headers, 'Modal-Session-ID': identifier}
+        with httpx.Client(headers=headers, timeout=self.timeout+30) as client:
             deadline = time.monotonic()+180
             while True:
                 if cancelled():
@@ -185,6 +190,7 @@ class HTTPBackend:
                                 self.stop()
                                 raise RuntimeError('Cancelled')
                         except httpx.RequestError as exc:
+                            logging.getLogger(__name__).warning('Worker transport failed after submission: %s', type(exc).__name__)
                             raise ExecutionUnknown('HTTP worker outcome unknown; no automatic replay') from exc
             finally:
                 self.active = None

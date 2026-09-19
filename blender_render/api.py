@@ -221,10 +221,11 @@ def create_app(service: RenderService, *, token: str, public_url: str = "", sign
         if not service.store.policy.public:
             await owner(request)
         with service.store.lock:
-            queue = service.store.db.execute("SELECT COUNT(*) FROM jobs WHERE state='queued'").fetchone()[0]
+            queue = service.store.db.execute("SELECT COUNT(*) FROM jobs WHERE state='queued' AND blocked_condition IS NULL").fetchone()[0]
+            blocked = service.store.db.execute("SELECT COUNT(*) FROM jobs WHERE state='queued' AND blocked_condition IS NOT NULL").fetchone()[0]
             running = service.store.db.execute("SELECT COUNT(*) FROM jobs WHERE state='running'").fetchone()[0]
         return {"status": "restart_required" if service.integrity.latched else ("ok" if service.store.healthy else "unavailable"),
-                "version": VERSION, "queue_depth": queue, "running": running}
+                "version": VERSION, "queue_depth": queue, "running": running, "blocked_jobs": blocked}
 
     @app.get("/v1/quota")
     async def quota(identity=Depends(owner)):

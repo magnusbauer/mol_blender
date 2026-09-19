@@ -314,6 +314,8 @@ def compact_job(job, profile):
                 'delivered': 'delivered', 'deleted': 'deleted', 'transfer_pending': 'transfer_pending'}.get(result['status'])
     result['error_category'] = consumer_errors.category(code) if code else None
     result['error_message'] = consumer_errors.MESSAGES[result['error_category']] if code else None
+    if result['condition']:
+        result['status'] = 'blocked'
     if result['condition'] or result['status'] == 'transfer_pending':
         result['poll_after_seconds'] = None
     return result
