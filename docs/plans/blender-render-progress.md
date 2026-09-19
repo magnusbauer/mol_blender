@@ -14,6 +14,17 @@ until normal expiry, without acknowledging download or initiating compute.
 The viewer CSP permits only the configured render origin; invalid URL schemes
 are rejected. Actual ChatGPT playback and durable host storage remain unverified.
 
+Executed validation: **1,326 repository tests**, **173 installed-wheel checks
+outside the checkout**, and **nine Chromium viewer cases** passed. Signed GIF
+preview reads returned exact bytes repeatedly, rejected a tampered signature and
+did not consume the artifact; the response contains no GIF bytes or resource link.
+Deployed `d7a98fa` through drain/stop/resume. Live engine
+`62c5f1277839f82ed3cf49279651992ca3d9af4ace7b8827bd1aef97fd65ca00`
+matched the staged wheel; viewer v4 and owner-only animation were confirmed.
+Health returned 200 with an empty queue, unauthenticated MCP returned 401, and
+admission reopened. Lifetime ceilings stayed $450 compute / $28 operations;
+operations spend was $14.45. No replacement render was submitted for this fix.
+
 ## Preset fidelity and direct GIF workflow — 2026-09-18
 
 The supplied ChatGPT transcript exposed forced transparency, invented background
