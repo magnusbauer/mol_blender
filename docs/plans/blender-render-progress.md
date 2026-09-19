@@ -17,6 +17,12 @@ initialized notification, ping round-trip and image display, in addition to nine
 existing envelope and GIF cases. Actual ChatGPT viewer loading remains a separate
 verification gate; standalone browser success does not establish it.
 
+Executed: 1,327 repository tests, 89 installed-wheel checks outside the checkout,
+and ten Chromium cases passed. Deployed `d6e4812` through drain/stop/resume;
+live engine `8bb64c93b317e05af72fde8cfa64fbc25270f3ef26cdb7cc4133d0c70fb24038`
+matched the staged package and advertised viewer v5. Live health returned 200
+with no queued/running jobs; unauthenticated MCP returned 401.
+
 ## Compact GIF delivery — September 18 follow-up
 
 The user reported a conversation-length error at GIF materialization. Read-only
