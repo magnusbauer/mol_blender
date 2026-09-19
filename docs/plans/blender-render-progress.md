@@ -13,6 +13,13 @@ No GPU work or permission bypass is introduced. ChatGPT may still require approv
 or lack these APIs; browser simulation does not establish native-image parity or
 actual host retention.
 
+Executed: 1,327 repository tests, 89 installed-wheel checks, and browser cases
+covering automatic success, duplicate suppression, explicit retry and file-ID
+restore passed. Deployed `e9ef5c6` through drain/stop/resume. Live viewer v8 and
+engine `4404dd090ccfe5526442085555a31ffa5d24c3ca0176eb0e01649831457543cd`
+match the staged package. Health returned 200 with an empty queue; unauthenticated
+MCP returned 401. Actual automatic upload within ChatGPT remains unverified.
+
 ## Save rendered PNG in ChatGPT — September 19
 
 Viewer v7 adds a user-initiated Save image to chat action when uploadFile and
