@@ -23,6 +23,16 @@ inspected. This is actual local execution, not Modal L4 or ChatGPT evidence.
 Frozen-source pytest: 1,332 passed. Outside-checkout installed wheel: 73 passed,
 including authenticated progress and a single POST during progress polling.
 
+Live verification caught a stale BLENDER_RENDER_JOB_TIMEOUT=600 deployment secret
+which overrode image configuration. The upgrade now synchronizes that secret with
+the worker deadline. Nine focused tests passed after the correction; two new
+upgrade tests also passed from the installed wheel outside the checkout.
+Candidate `a9555fd` is deployed to owner-restricted staging after drain/stop.
+Live controller deadline is verified as 1800, engine hash matches the tested wheel
+(`c52ecb2dd6ecc83950501d2a289cb732ccea313965cf0b3d461a19c336fa2484`),
+health is OK (0 runnable, 0 running, 2 retained blocked jobs), and unauthenticated
+MCP returns 401. No hosted GPU replay or new hosted render was submitted.
+
 Acceptance remains unfinished: the user explicitly requires testing in ChatGPT.
 This environment exposes no authenticated ChatGPT browser or browser-control
 connection; access was requested while backend work continued. Do not describe
