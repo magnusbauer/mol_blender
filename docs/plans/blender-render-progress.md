@@ -26,6 +26,15 @@ or uncertain paid operation has been retried. A new actual ChatGPT test and
 GIF playback/reload checks remain outstanding.
 
 
+Deployed `ffbae9e` after the normal drain/stop sequence to the existing
+owner-restricted staging endpoint. Live controller engine build matches the
+tested wheel (`e2bec23bf060cc898befe66a5d8b1c3cb79cfeddcc7dfc0ad48b67086bc5b3a3`);
+the public-PDB tool is present, restriction remains enabled, and deadline is 1800.
+Health: OK, zero runnable/running, two retained blocked jobs. Unauthenticated
+MCP returns 401. No new hosted GPU execution was submitted during deployment.
+The local Chrome task is available for acceptance; coordination authorization
+has been requested but not received. ChatGPT acceptance remains outstanding.
+
 ## Animation timeout and real execution check — September 19
 
 The latest reported operation reached its GPU worker. Provider logs show worker
