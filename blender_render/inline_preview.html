@@ -20,6 +20,7 @@ const status = document.getElementById('status');
 let shown = false;
 let saveSource = null;
 let saving = false;
+const autoSaveAttempts = new Set();
 const saveButton = document.getElementById('save');
 const savedStatus = document.getElementById('saved');
 let storedImage = window.openai?.widgetState?.privateContent?.savedImage || null;
@@ -37,12 +38,19 @@ async function restoreSavedImage() {
     savedStatus.textContent = 'The saved image could not be opened in this session.';
   }
 }
+function autoSave() {
+  if (!saveSource || saving || storedImage?.jobId === saveSource.jobId ||
+      autoSaveAttempts.has(saveSource.jobId) || !window.openai?.uploadFile || !window.openai?.setWidgetState) return;
+  autoSaveAttempts.add(saveSource.jobId);
+  saveButton.onclick();
+}
 saveButton.onclick = async () => {
   if (saving || !saveSource || !window.openai?.uploadFile || !window.openai?.setWidgetState) return;
+  const source = {...saveSource};
   saving = true; saveButton.disabled = true; savedStatus.hidden = false;
   savedStatus.textContent = 'Saving image to ChatGPT…';
   try {
-    const url = new URL(saveSource.url);
+    const url = new URL(source.url);
     if (url.protocol !== 'https:' || url.username || url.password || !url.pathname.startsWith('/preview/')) throw new Error();
     const response = await fetch(url.href, {credentials:'omit', signal:AbortSignal.timeout(30000)});
     if (!response.ok || !response.headers.get('content-type')?.startsWith('image/png')) throw new Error();
@@ -50,7 +58,7 @@ saveButton.onclick = async () => {
     if (blob.size > 64 * 1024 * 1024) throw new Error();
     const {fileId} = await window.openai.uploadFile(new File([blob], 'molecular-render.png', {type:'image/png'}));
     if (typeof fileId !== 'string' || !fileId) throw new Error();
-    storedImage = {fileId, jobId:saveSource.jobId};
+    storedImage = {fileId, jobId:source.jobId};
     window.openai.setWidgetState({modelContent:'Rendered PNG saved in ChatGPT.',
       privateContent:{savedImage:storedImage}, imageIds:[fileId]});
     savedStatus.textContent = 'Image saved in ChatGPT.';
@@ -58,6 +66,7 @@ saveButton.onclick = async () => {
   } catch (_) {
     savedStatus.textContent = 'Image was not saved. It may have expired, or ChatGPT file saving may be unavailable.';
     saveButton.disabled = false;
+    saveButton.textContent = 'Retry saving image';
   } finally { saving = false; resize(); }
 };
 function resize() {
@@ -75,6 +84,7 @@ function render(envelope) {
     saveSource = source;
     saveButton.hidden = !(window.openai?.uploadFile && window.openai?.setWidgetState);
     if (storedImage?.jobId === source.jobId) { saveButton.disabled = true; saveButton.textContent = 'Image saved'; }
+    autoSave();
   }
   const links = result._meta?.downloads || result.downloads;
   if (Array.isArray(links)) {
@@ -148,6 +158,7 @@ window.addEventListener('message', event => {
 });
 window.addEventListener('openai:set_globals', event => {
   render(event.detail?.globals?.toolResponseMetadata);
+  autoSave();
 });
 render(window.openai?.toolResponseMetadata);
 render(window.openai?.toolOutput);

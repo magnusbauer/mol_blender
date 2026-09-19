@@ -1,5 +1,18 @@
 # Blender Render implementation progress
 
+## Automatic PNG saving — September 19
+
+At the user's request, viewer v8 starts PNG saving automatically when the result
+and host upload/state APIs are available. The viewer attempts each job once per
+mount; duplicate result notifications do not start another upload, and a stored
+matching file ID suppresses saving after reopen. A failed upload exposes explicit
+Retry saving image instead of retrying repeatedly. The asynchronous save snapshots
+its source so subsequent notifications cannot associate a file with the wrong job.
+The existing confirmed-file-ID restore path and PNG-only scope remain unchanged.
+No GPU work or permission bypass is introduced. ChatGPT may still require approval
+or lack these APIs; browser simulation does not establish native-image parity or
+actual host retention.
+
 ## Save rendered PNG in ChatGPT — September 19
 
 Viewer v7 adds a user-initiated Save image to chat action when uploadFile and

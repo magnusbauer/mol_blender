@@ -76,7 +76,7 @@ def test_cached_viewer_versions_remain_readable(consumer):
     from fastmcp import Client
     async def run():
         async with Client(server(consumer[0])) as client:
-            for version in range(1, 8):
+            for version in range(1, 9):
                 uri = f'ui://blender-render/inline-result-v{version}.html'
                 resource = (await client.read_resource(uri))[0]
                 assert str(resource.uri) == uri
