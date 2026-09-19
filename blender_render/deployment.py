@@ -74,6 +74,9 @@ def deploy(*, development=False, staging_user=None, personal=None, budget_usd=No
         if not staging_user:
             from .release_validation import require_release_ready
             require_release_ready(Path(report) if report else None)
+    # Existing deployment secrets override image env; keep the controller deadline
+    # identical to the worker image and its reservation policy on every upgrade.
+    credentials["BLENDER_RENDER_JOB_TIMEOUT"] = "1800" if personal or animation_owner else "600"
     write_private(secret_path, json.dumps(credentials))
     token_path = root / "token"
     write_private(token_path, credentials["BLENDER_RENDER_ADMIN_TOKEN"])
@@ -105,7 +108,7 @@ def deploy(*, development=False, staging_user=None, personal=None, budget_usd=No
     env["BLENDER_RENDER_APP_NAME"] = name
     env['BLENDER_RENDER_OWNER_ANIMATION'] = animation_owner
     env['BLENDER_RENDER_ALLOWED_USERS'] = credentials.get('BLENDER_RENDER_ALLOWED_USERS', '')
-    env["BLENDER_RENDER_JOB_TIMEOUT"] = "1800" if personal or animation_owner else "600"
+    env["BLENDER_RENDER_JOB_TIMEOUT"] = credentials["BLENDER_RENDER_JOB_TIMEOUT"]
     # Freeze a build snapshot. Modal uploads local files lazily; a developer
     # editing the checkout during a long image build must not create a mixed
     # deployment or invalidate an otherwise completed image build.
