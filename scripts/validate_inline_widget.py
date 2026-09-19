@@ -48,4 +48,27 @@ with sync_playwright() as p:
    assert page.locator('#status').is_hidden()
   assert requests == (['https://render.example.org/preview/test'] if mode == 'gif_url' else []), requests
   page.close();print(mode,'passed')
+ # Exercise the actual parent/iframe initialization sequence, not only globals.
+ page=browser.new_page()
+ page.set_content('<iframe id="app" sandbox="allow-scripts"></iframe>')
+ page.evaluate("""({html, result}) => {
+   window.ready = false; window.pong = false;
+   const frame = document.getElementById('app');
+   window.addEventListener('message', event => {
+     if (event.source !== frame.contentWindow) return;
+     const m = event.data;
+     if (m.method === 'ui/initialize') frame.contentWindow.postMessage({jsonrpc:'2.0',id:m.id,result:{protocolVersion:'2026-01-26',hostCapabilities:{}}}, '*');
+     if (m.method === 'ui/notifications/initialized') {
+       window.ready = true;
+       frame.contentWindow.postMessage({jsonrpc:'2.0',id:'probe',method:'ping'}, '*');
+       frame.contentWindow.postMessage({jsonrpc:'2.0',method:'ui/notifications/tool-result',params:result}, '*');
+     }
+     if (m.id === 'probe' && m.result) window.pong = true;
+   });
+   frame.srcdoc = html;
+ }""", {'html':html,'result':{'_meta':{'preview':preview}}})
+ page.wait_for_function('window.ready && window.pong')
+ frame=page.frames[1]
+ frame.wait_for_function("!document.getElementById('preview').hidden && document.getElementById('preview').naturalWidth===80")
+ page.close();print('sandbox handshake and ping passed')
  browser.close()

@@ -1,5 +1,22 @@
 # Blender Render implementation progress
 
+## Viewer loading compatibility — September 19
+
+Following a real ChatGPT “Could not open this app” report, viewer v5 retains read
+compatibility for cached inline viewer URIs v1–v4, answers host readiness pings,
+and supports the legacy initial toolOutput bridge alongside toolResponseMetadata.
+The inline developer viewer now uses the host default sandbox instead of a custom
+Modal identity; artifact CSP stays restricted to the configured renderer origin.
+A published plugin still needs a unique approved domain before release.
+The result caption now distinguishes the server artifact inventory from displayed
+or attached files. These are verified compatibility fixes, not proof of the
+unobserved ChatGPT client failure's exact cause. No molecular render was submitted.
+
+Browser validation now includes a sandboxed iframe with a real parent handshake,
+initialized notification, ping round-trip and image display, in addition to nine
+existing envelope and GIF cases. Actual ChatGPT viewer loading remains a separate
+verification gate; standalone browser success does not establish it.
+
 ## Compact GIF delivery — September 18 follow-up
 
 The user reported a conversation-length error at GIF materialization. Read-only

@@ -65,3 +65,19 @@ def test_viewer_discovery_allows_only_render_origin(consumer):
             assert "'data:' + preview.mimeType + ';base64,'" in resource.text
             assert 'download_url' not in resource.text
     asyncio.run(run())
+
+
+def test_cached_viewer_versions_remain_readable(consumer):
+    import asyncio
+    from fastmcp import Client
+    async def run():
+        async with Client(server(consumer[0])) as client:
+            for version in range(1, 6):
+                uri = f'ui://blender-render/inline-result-v{version}.html'
+                resource = (await client.read_resource(uri))[0]
+                assert str(resource.uri) == uri
+                assert resource.mimeType == 'text/html;profile=mcp-app'
+                assert 'domain' not in resource.meta['ui']
+                assert 'openai/widgetDomain' not in resource.meta
+                assert "message.method === 'ping'" in resource.text
+    asyncio.run(run())
