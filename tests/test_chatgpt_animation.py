@@ -27,7 +27,7 @@ def test_motion_defaults_are_bounded_and_normalization_is_stable():
     normalized = contract.normalize_request(value)
     assert contract.normalize_request(normalized) == normalized
     style = resolve_options(contract.render_options(normalized), {})['style_doc']
-    assert style['output']['animation'] == {'mode':'360','duration':3,'fps':12,'gif':True}
+    assert style['output']['animation'] == {'mode':'360','duration':6,'fps':24,'gif':True}
     assert (style['output']['width'],style['output']['height'],style['output']['samples']) == (960,540,48)
     explicit = contract.normalize_request({**value,'width':320,'height':240,'samples':64,'duration':1,'fps':4})
     assert contract.normalize_request(explicit) == explicit
@@ -103,7 +103,7 @@ def test_single_animation_job_returns_gif_not_frame_archive(consumer, gif_reques
             assert api.get(route + 'tampered').status_code == 401
             assert (service.store.artifact_root(job['job_id']) / 'render.gif').exists()
 
-    assert [item.name for item in response.content if item.type=='resource_link'] == ([] if gif_requested else ['render.mp4'])
+    assert {item.name for item in response.content if item.type=='resource_link'} == ({'render.png','render.mp4','render.gif'} if gif_requested else {'render.png','render.mp4'})
     assert len(service.backend.calls)==len(conversions)==len(downloads)==1
 
 

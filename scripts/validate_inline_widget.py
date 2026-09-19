@@ -56,13 +56,24 @@ with sync_playwright() as p:
    page.get_by_text('Download GIF',exact=True).click()
    assert page.evaluate('window.clicked')=='https://render.example.org/download/gif'
   page.close();print(mode,'passed')
+ # File APIs absent initially must be visible, then recover without another result.
+ page=browser.new_page();page.set_content(html)
+ page.route('https://render.example.org/preview/late',lambda route:route.fulfill(content_type='image/png',body=buf.getvalue()))
+ page.evaluate("r=>window.postMessage({jsonrpc:'2.0',method:'ui/notifications/tool-result',params:r},'*')",
+   {'_meta':{'saveFiles':[{'name':'render.png','jobId':'late','url':'https://render.example.org/preview/late'}]}})
+ page.wait_for_function("document.getElementById('saved').textContent.includes('cannot save')")
+ assert page.locator('#saved').is_visible()
+ page.evaluate("window.openai={uploadFile:async()=>({fileId:'file-late'}),setWidgetState:s=>window.savedState=s}")
+ page.wait_for_function("window.savedState?.imageIds?.[0]==='file-late'")
+ assert page.locator('#save').is_visible()
+ page.close();print('missing and delayed upload APIs passed')
  # Saving starts once automatically; failed uploads require an explicit retry.
  for fail in (False, True):
   page=browser.new_page()
   page.set_content(html)
   page.route('https://render.example.org/preview/save',lambda route: route.fulfill(content_type='image/png',body=buf.getvalue()))
   page.evaluate("""fail => {window.openai={
-    uploadFile:async file=>{window.uploadCount=(window.uploadCount||0)+1;window.uploaded={name:file.name,size:file.size,type:file.type}; if(fail) throw Error('unavailable'); return {fileId:'file-saved'};},
+    uploadFile:async (file,options)=>{window.uploadOptions=options;window.uploadCount=(window.uploadCount||0)+1;window.uploaded={name:file.name,size:file.size,type:file.type}; if(fail) throw Error('unavailable'); return {fileId:'file-saved'};},
     setWidgetState:state=>window.savedState=state
   }}""",fail)
   page.evaluate("r=>window.postMessage({jsonrpc:'2.0',method:'ui/notifications/tool-result',params:r},'*')",
@@ -74,6 +85,7 @@ with sync_playwright() as p:
    page.wait_for_function("window.savedState?.imageIds?.[0]==='file-saved'")
    assert page.evaluate('window.uploaded.type')=='image/png'
    state=page.evaluate('window.savedState')
+  assert page.evaluate('window.uploadOptions') == {'library':True}
   assert page.evaluate('window.uploadCount') == 1
   page.evaluate("r=>window.postMessage({jsonrpc:'2.0',method:'ui/notifications/tool-result',params:r},'*')",
     {'_meta':{'saveImage':{'jobId':'test-job','url':'https://render.example.org/preview/save'}}})

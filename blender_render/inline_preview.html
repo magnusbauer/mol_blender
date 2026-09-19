@@ -11,7 +11,7 @@ html,body{margin:0;padding:0;background:transparent}img{display:block;width:100%
 <img id="preview" alt="Blender molecular render" hidden>
 <p id="status" role="status">Waiting for the rendered image…</p>
 <nav id="downloads" aria-label="Download render" hidden></nav>
-<button id="save" type="button" hidden>Save image to chat</button>
+<button id="save" type="button" hidden>Save files to chat</button>
 <p id="saved" role="status" hidden></p>
 </main>
 <script>
@@ -44,6 +44,17 @@ async function restoreSavedImage() {
     savedStatus.textContent = 'The saved image could not be opened in this session.';
   }
 }
+function refreshSaving() {
+  if (!saveSource) return;
+  const available = !!(window.openai?.uploadFile && window.openai?.setWidgetState);
+  saveButton.hidden = !available;
+  if (!available) {
+    savedStatus.hidden = false;
+    savedStatus.textContent = 'This viewer cannot save files into ChatGPT. Allow ChatGPT’s file import when prompted; this preview alone is temporary.';
+    resize();
+  }
+  autoSave();
+}
 function autoSave() {
   if (!saveSource || saving || saveFiles.every(alreadySaved) ||
       autoSaveAttempts.has(saveSource.jobId) || !window.openai?.uploadFile || !window.openai?.setWidgetState) return;
@@ -65,7 +76,7 @@ saveButton.onclick = async () => {
       if (!response.ok || !response.headers.get('content-type')?.startsWith(fileTypes[source.name])) throw new Error();
       const blob = await response.blob();
       if (blob.size > 64 * 1024 * 1024) throw new Error();
-      const {fileId} = await window.openai.uploadFile(new File([blob], source.name, {type:fileTypes[source.name]}));
+      const {fileId} = await window.openai.uploadFile(new File([blob], source.name, {type:fileTypes[source.name]}), {library:true});
       if (typeof fileId !== 'string' || !fileId) throw new Error();
       const nextFiles = {...savedFiles, [source.name]:{fileId, jobId:source.jobId}};
       const nextImage = nextFiles['render.png'] || null;
@@ -99,7 +110,7 @@ function render(envelope) {
     saveSource = source;
     saveButton.hidden = !(window.openai?.uploadFile && window.openai?.setWidgetState);
     if (saveFiles.every(alreadySaved)) { saveButton.disabled = true; saveButton.textContent = 'Files saved'; }
-    autoSave();
+    refreshSaving();
   }
   const links = result._meta?.downloads || result.downloads;
   if (Array.isArray(links)) {
@@ -183,8 +194,15 @@ window.addEventListener('message', event => {
 });
 window.addEventListener('openai:set_globals', event => {
   render(event.detail?.globals?.toolResponseMetadata);
-  autoSave();
+  refreshSaving();
 });
+// Some hosts install file extensions after the tool-result notification.
+let bridgeChecks = 0;
+const bridgeTimer = setInterval(() => {
+  if (saveSource && window.openai?.uploadFile && window.openai?.setWidgetState) {
+    refreshSaving(); clearInterval(bridgeTimer);
+  } else if (++bridgeChecks >= 30) clearInterval(bridgeTimer);
+}, 1000);
 render(window.openai?.toolResponseMetadata);
 render(window.openai?.toolOutput);
 if ((storedImage || savedFiles['render.gif']) && !image.getAttribute('src')) restoreSavedImage();

@@ -1,5 +1,34 @@
 # Blender Render implementation progress
 
+## File import fallback and smoother spins — September 19
+
+The supplied ChatGPT DOM showed a temporary GIF URL, hidden save button and no
+save status. The viewer previously silently required optional upload/state APIs;
+GIF results deliberately omitted native file references. Thus a working inline
+preview did not establish ChatGPT storage. This is a correction to the earlier
+saving implementation, not evidence that those previous uploads succeeded.
+
+Results now offer PNG, GIF and MP4 resource links for host file materialization,
+while keeping animation bytes outside model context and the animated viewer.
+Viewer v10 visibly reports missing save support and detects late file extensions.
+When upload is available it requests library storage, retains confirmed file IDs,
+and preserves per-format retry. ChatGPT controls format acceptance, file import
+approval and retention; resource links alone do not prove durable storage.
+Official reference: https://developers.openai.com/plugins/reference#file-apis .
+
+Consumer spin defaults are now 6 seconds at 24 fps (144 frames), retaining 960x540
+and 48 samples. Rocking remains 3 seconds with 24 fps. Explicit controls win.
+More rendered frames increase compute time; no interpolation or duplicated frames
+are used. Existing renders and ambiguous executions are not resubmitted.
+
+Validation: 1,330 tests passed from frozen source; outside-checkout installed-wheel
+checks passed 21 animation/presentation tests and 67 discovery/review tests.
+Chromium checks passed against source and installed HTML, including absent/late
+file APIs, library upload requests, per-format failures, retry and restoration.
+These host simulations do not establish actual ChatGPT saving or GIF/MP4 format
+acceptance. A new authenticated ChatGPT request remains the end-to-end gate.
+
+
 ## GPU handoff reliability — September 19
 
 Read-only inspection of the reported operation found execution_unknown after

@@ -82,8 +82,8 @@ def normalize_request(value, *, trusted=False):
                 controls.setdefault('width', canonical['hard_requirements']['width'] or canonical['overrides'].get('output', {}).get('width', 960))
                 controls.setdefault('height', canonical['hard_requirements']['height'] or canonical['overrides'].get('output', {}).get('height', 540))
                 controls.setdefault('samples', canonical['overrides'].get('output', {}).get('samples', 48))
-                motion.setdefault('fps', 12)
-                motion.setdefault('duration', 3)
+                motion.setdefault('fps', 24)
+                motion.setdefault('duration', 6 if motion['animation'] == '360' else 3)
                 motion.setdefault('gif', True)
             resolve_motion(motion, {'width': controls.get('width', 960), 'height': controls.get('height', 540)})
         hard, edits = canonical['hard_requirements'], canonical['overrides']

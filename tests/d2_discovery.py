@@ -39,8 +39,8 @@ def digests(records):
         allow_nan=False).encode()).hexdigest() for key, value in records.items()}
 
 
-EXPECTED_DIGESTS = {'hosted_default': '9acf2f5a5a9e21f00f84a16032c71462d000f8ab2021d83d60bc6bbac1ff1bc4',
+EXPECTED_DIGESTS = {'hosted_default': '0b280ab4ef033d3626f38b9fcc3633037460ad54ec9724691fc7de429b0c65c5',
  'trusted_default': 'fc545d27d9cea27139d78892a1e7723c79f3523be77b4d6c8fb988fa774faf02',
- 'hosted_compatibility': '848efc2fdaedf364bf078dd0c8a58e543548f436a5924fee58217f95bd007ae8',
+ 'hosted_compatibility': '1c0b44dd7062870df5182da30cda315a8f8cb15d1aff6c8f05432fe808ff341f',
  'trusted_compatibility': '93f9e3c0c68f2b7602d0e087d454dfa14b78a3d95292369810b43d6312147820',
- 'legacy_widget': '35a63376acd34f32c3b899d36e7554d32b83001908903dcb66a433b02fa69a53'}
+ 'legacy_widget': '81541d5d1754bfaef6fbdf5f09c7a588c75c518ea133279709b537e079f20375'}
