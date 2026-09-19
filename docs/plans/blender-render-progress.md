@@ -1,5 +1,34 @@
 # Blender Render implementation progress
 
+## Animation timeout and real execution check — September 19
+
+The latest reported operation reached its GPU worker. Provider logs show worker
+TimeoutError and controller ReadTimeout after submission; its stored request was
+960x540, 48 samples, 6 seconds, 24 fps, with a 600-second deadline. The previous
+startup-race mitigation did not address this failure. HTTP workers also failed to
+forward stages, leaving the controller at waiting_for_compute while rendering.
+The ambiguous operation remains fenced and is not replayed.
+
+Camera animation now enables Blender persistent scene data during the frame loop
+and restores the original setting afterward. HTTP workers expose authenticated,
+bounded stage metadata; controllers poll it without replaying render POSTs.
+Owner-restricted animation deployment uses a 1,800-second ceiling consistently in
+the worker and controller policy, so the reservation covers the accepted ceiling.
+Ordinary shared deployment remains 600 seconds; lifetime ceilings are unchanged.
+
+Executed: the complete public 1QYS neon_duplex_hero render on local Apptainer CUDA
+RTX 4080 SUPER finished in 177.5 seconds with 144 frames, 960x540, 48 samples.
+The GIF was decoded: 6,000 ms, infinite loop, 12,520,456 bytes. The PNG was visually
+inspected. This is actual local execution, not Modal L4 or ChatGPT evidence.
+Frozen-source pytest: 1,332 passed. Outside-checkout installed wheel: 73 passed,
+including authenticated progress and a single POST during progress polling.
+
+Acceptance remains unfinished: the user explicitly requires testing in ChatGPT.
+This environment exposes no authenticated ChatGPT browser or browser-control
+connection; access was requested while backend work continued. Do not describe
+simulated host tests, local GPU runs or healthy deployment as a ChatGPT pass.
+
+
 ## File import fallback and smoother spins — September 19
 
 The supplied ChatGPT DOM showed a temporary GIF URL, hidden save button and no

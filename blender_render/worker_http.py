@@ -26,6 +26,7 @@ def create_worker(token: str, *, timeout: int = 600, backend_factory=None,
         raise ValueError('A worker token is required')
     app = FastAPI()
     flags = {}
+    stages = {}
     busy = threading.Lock()
     factory = backend_factory or (lambda root: HostBackend(root,
         blender='/opt/runtime/blender-5.0.1-linux-x64/blender', timeout=timeout-20))
@@ -46,6 +47,14 @@ def create_worker(token: str, *, timeout: int = 600, backend_factory=None,
         except RestartRequired:
             return JSONResponse({'ready':False, 'condition':'restart_required'}, status_code=503)
         return {'ready':not process_seal().latched, 'controller_declaration': engine_identity(), 'worker_observation': None}
+
+    @app.get('/status/{job_id}')
+    async def status(job_id: str):
+        if not re.fullmatch('[a-f0-9]{32}', job_id):
+            return JSONResponse({'error':'Invalid job ID'}, status_code=400)
+        if job_id not in stages:
+            return JSONResponse({'error':'Unknown job'}, status_code=404)
+        return {'stage':stages[job_id]}
 
     @app.post('/cancel/{job_id}')
     async def cancel(job_id: str):
@@ -83,6 +92,12 @@ def create_worker(token: str, *, timeout: int = 600, backend_factory=None,
                     with tempfile.TemporaryDirectory(prefix='blender-render-worker-') as root:
                         protect('dispatch')
                         backend = factory(Path(root))
+                        stages[job_id] = 'scene_build'
+                        def report(identifier, stage):
+                            if stage in ('scene_build', 'rendering'):
+                                stages[job_id] = stage
+                        if hasattr(backend, 'set_progress'):
+                            backend.set_progress(report)
                         try:
                             return backend.render(payload, job_id, flag.is_set)
                         finally:
@@ -119,6 +134,7 @@ def create_worker(token: str, *, timeout: int = 600, backend_factory=None,
             for key, (_, created) in list(flags.items()):
                 if key != job_id and created < time.monotonic()-3600:
                     flags.pop(key, None)
+                    stages.pop(key, None)
 
     app.add_middleware(BoundedBody, limit=64*1024**2)
     return app
@@ -132,6 +148,10 @@ class HTTPBackend:
         self.url, self.token, self.timeout = url.rstrip('/'), token, timeout
         self.headers = {'Authorization':'Bearer '+token, 'Modal-Key':proxy_key, 'Modal-Secret':proxy_secret}
         self.active = None
+        self.progress = None
+
+    def set_progress(self, callback):
+        self.progress = callback
 
     def render(self, request, identifier, cancelled):
         import concurrent.futures
@@ -179,6 +199,7 @@ class HTTPBackend:
                 with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
                     protect('submission')
                     pending = pool.submit(client.post, self.url+'/render/'+identifier, json=request)
+                    next_progress = time.monotonic()
                     while True:
                         try:
                             response = pending.result(timeout=.25)
@@ -186,6 +207,16 @@ class HTTPBackend:
                             response.raise_for_status()
                             return response.json()
                         except concurrent.futures.TimeoutError:
+                            if self.progress and time.monotonic() >= next_progress:
+                                next_progress = time.monotonic() + 2
+                                try:
+                                    state = client.get(self.url+'/status/'+identifier, timeout=2)
+                                    if state.status_code == 200:
+                                        stage = state.json().get('stage')
+                                        if stage in ('scene_build', 'rendering'):
+                                            self.progress(identifier, stage)
+                                except (httpx.HTTPError, ValueError):
+                                    pass  # Missing progress never replays or fails the render.
                             if cancelled():
                                 self.stop()
                                 raise RuntimeError('Cancelled')

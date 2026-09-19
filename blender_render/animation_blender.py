@@ -12,6 +12,8 @@ from blender_render.animation import angles, package_frames
 def render(scene, camera, center, output_png, config):
     original = camera.matrix_world.copy()
     original_path = scene.render.filepath
+    original_persistent = scene.render.use_persistent_data
+    scene.render.use_persistent_data = True
     axis = original.to_quaternion() @ Vector((0, 1, 0))
     motion = angles(config)
     try:
@@ -31,6 +33,7 @@ def render(scene, camera, center, output_png, config):
     finally:
         camera.matrix_world = original
         scene.render.filepath = original_path
+        scene.render.use_persistent_data = original_persistent
         bpy.context.view_layer.update()
     return dict(config, frames=len(motion), angles_deg=motion, axis='initial_camera_up',
                 center=list(center), encoding_background='white')

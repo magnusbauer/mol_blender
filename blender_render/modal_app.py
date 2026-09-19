@@ -140,7 +140,8 @@ def create_gateway():
     from blender_render.service import RenderService
     from blender_render.budget import OperatingBudget
     # Development reserves $10 of its $50 allowance for builds/control/storage.
-    policy = Policy(public=True, budget_usd=450 if PUBLIC else 40, allow_animation=ALLOW_ANIMATION)
+    policy = Policy(public=True, budget_usd=450 if PUBLIC else 40, allow_animation=ALLOW_ANIMATION,
+                    max_job_seconds=JOB_TIMEOUT)
     if PERSONAL:
         policy = replace(policy, budget_usd=float(os.environ['BLENDER_RENDER_COMPUTE_BUDGET']),
             expires_at=float(os.environ['BLENDER_RENDER_CREDITS_EXPIRE']), max_job_seconds=JOB_TIMEOUT,

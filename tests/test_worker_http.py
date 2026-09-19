@@ -109,3 +109,55 @@ def test_health_separates_retained_jobs_from_runnable_queue(consumer):
         assert health['blocked_jobs'] == 1
     row = service.store.db.execute('SELECT state,blocked_condition FROM jobs WHERE id=?',(job['job_id'],)).fetchone()
     assert tuple(row) == ('queued', 'execution_unknown')
+
+
+def test_worker_progress_is_authenticated_and_reports_real_backend_stage(payload):
+    import threading
+    entered, release = threading.Event(), threading.Event()
+    class Backend:
+        def __init__(self, root): pass
+        def set_progress(self, callback): self.progress = callback
+        def render(self, request, identifier, cancelled):
+            self.progress(identifier, 'rendering')
+            entered.set()
+            assert release.wait(5)
+            return {'status':'completed'}
+        def stop(self): pass
+    with TestClient(create_worker('x'*40, backend_factory=Backend)) as client:
+        headers = {'Authorization':'Bearer '+'x'*40}
+        job = 'c'*32
+        results = []
+        thread = threading.Thread(target=lambda:results.append(client.post('/render/'+job,
+            json=worker_request(payload,job),headers=headers)))
+        thread.start()
+        try:
+            assert entered.wait(5)
+            assert client.get('/status/'+job).status_code == 401
+            assert client.get('/status/'+job,headers=headers).json() == {'stage':'rendering'}
+        finally:
+            release.set();thread.join(5)
+        assert results[0].status_code == 200
+
+
+def test_http_backend_forwards_progress_without_resubmitting(payload, monkeypatch):
+    import httpx, time
+    from blender_render.engine import engine_identity
+    from blender_render.worker_http import HTTPBackend
+    posts, progress = [], []
+    class Client:
+        def __init__(self, **kwargs): pass
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def get(self, url, **kwargs):
+            return httpx.Response(200,json=({'controller_declaration':engine_identity()}
+                if url.endswith('/health') else {'stage':'rendering'}))
+        def post(self, url, **kwargs):
+            posts.append(url)
+            time.sleep(.6)
+            return httpx.Response(200,json={'status':'completed'},request=httpx.Request('POST',url))
+    monkeypatch.setattr(httpx,'Client',Client)
+    backend=HTTPBackend('https://worker.invalid','x'*40)
+    backend.set_progress(lambda job,stage:progress.append((job,stage)))
+    job='d'*32
+    assert backend.render(worker_request(payload,job),job,lambda:False)['status']=='completed'
+    assert len(posts)==1 and progress==[(job,'rendering')]

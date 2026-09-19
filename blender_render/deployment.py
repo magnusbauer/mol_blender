@@ -105,7 +105,7 @@ def deploy(*, development=False, staging_user=None, personal=None, budget_usd=No
     env["BLENDER_RENDER_APP_NAME"] = name
     env['BLENDER_RENDER_OWNER_ANIMATION'] = animation_owner
     env['BLENDER_RENDER_ALLOWED_USERS'] = credentials.get('BLENDER_RENDER_ALLOWED_USERS', '')
-    env["BLENDER_RENDER_JOB_TIMEOUT"] = "1800" if personal else "600"
+    env["BLENDER_RENDER_JOB_TIMEOUT"] = "1800" if personal or animation_owner else "600"
     # Freeze a build snapshot. Modal uploads local files lazily; a developer
     # editing the checkout during a long image build must not create a mixed
     # deployment or invalidate an otherwise completed image build.
