@@ -1,5 +1,31 @@
 # Blender Render implementation progress
 
+## Public PDB submission correction — September 19
+
+The real ChatGPT test submitted `file="1QYS"` to the attachment-only
+render_structure tool. This fails before admission; it does not demonstrate an
+invalid preset. HTTP MCP now exposes render_public_structure with a validated
+four-character public PDB ID and fixed RCSB mmCIF download, feeding the existing
+preflight/admission/conversion/rendering pipeline. Attachment strings receive an
+actionable error. Recovery precedes fetching and the normal reservation rules
+remain in force. Stdio tool availability is unchanged.
+
+Executed validation: 1,341 frozen-source tests passed; 26 installed-wheel tests
+passed outside the checkout. The secure downloader retrieved public 1QYS mmCIF.
+A separate actual loopback HTTP-worker run, using the unchanged renderer in the
+previous installed release, completed all 144 frames in 173.7 seconds on local
+Apptainer/CUDA RTX 4080 SUPER: 960x540, 48 samples, 6 seconds at 24 fps. GIF size
+was 12,519,336 bytes; all PNG, MP4 and lossless-frame outputs returned through
+HTTP with live stage progress. This is not Modal or ChatGPT acceptance evidence.
+
+An earlier attached-file job in the same ChatGPT conversation failed after
+rendering began. Its existing category-only logs do not identify the cause;
+that failure remains unresolved. Controller failure logs now include exception
+type and code locations without exception messages or molecular data. No failed
+or uncertain paid operation has been retried. A new actual ChatGPT test and
+GIF playback/reload checks remain outstanding.
+
+
 ## Animation timeout and real execution check — September 19
 
 The latest reported operation reached its GPU worker. Provider logs show worker

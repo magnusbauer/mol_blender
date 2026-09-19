@@ -643,7 +643,10 @@ class RenderService:
             category = consumer_errors.from_exception(exc,
                 default='render_failed' if compute_started else 'invalid_structure')['error_category']
             if initial_metadata is not None:
-                log.warning('Consumer operation failed: category=%s job_id=%s', category, identifier)
+                import traceback
+                frames = [(Path(f.filename).name, f.lineno, f.name) for f in traceback.extract_tb(exc.__traceback__)]
+                log.warning('Consumer operation failed: category=%s job_id=%s type=%s frames=%s',
+                    category, identifier, type(exc).__name__, frames)
                 message = consumer_errors.MESSAGES[category]
                 if category == 'cancelled':
                     self.store.cancel(job['owner'], identifier)

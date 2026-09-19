@@ -1,5 +1,8 @@
 """Fixed public MCP errors. No exception text or submitted values are serialized."""
 MESSAGES = {
+    'attachment_required': 'file must be attachment metadata supplied by the chat host. For a public PDB ID use render_public_structure instead.',
+    'public_structure_invalid': 'Use a four-character public PDB ID such as 1QYS; attachments use render_structure.',
+    'public_structure_unavailable': 'The public mmCIF structure could not be downloaded from RCSB.',
     'attachment_unavailable': 'The attachment is unavailable. Attach it again for a new submission.',
     'format_unknown': 'Choose a supported molecular file format.',
     'invalid_structure': 'The molecular structure could not be validated or converted.',
