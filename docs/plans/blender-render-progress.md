@@ -22,6 +22,11 @@ covering PNG/GIF success, MP4 rejection, retry of MP4 only, saved-file restore a
 duplicate suppression passed. These use simulated host upload APIs; actual
 ChatGPT GIF/MP4 upload and retention remain unverified.
 
+Deployed `5f97069` through drain/stop/resume. Live viewer v9 and engine
+`e7e6e42e5afe94ae521ebdee84eea7b21b32409f0fd01c0819a99fe7c6869bbc`
+matched the staged package. Health returned 200 with an empty queue, and
+unauthenticated MCP returned 401.
+
 ## Automatic PNG saving — September 19
 
 At the user's request, viewer v8 starts PNG saving automatically when the result
