@@ -21,7 +21,7 @@ transport retries. Keys and job history are internal details, not user tasks.
   built-in preset colors or approximate them from a description.
 - **360 GIF:** pass `animation="360", gif=true` inside `request`. For rocking use
   `animation="rock"`. This is ONE job returning a real rendered GIF. Default
-  animation previews use 640×360, 32 samples, 3 seconds, 12 fps. Honor explicitly
+  animation previews use 960×540, 48 samples, 3 seconds, 12 fps. Honor explicitly
   requested quality. Resolution/samples affect speed, not the preset style.
 - **Files:** preserve ChatGPT's declared file object and URL. PNG is automatic;
   request a Blender scene only if asked. PSE preserves the saved molecular view;

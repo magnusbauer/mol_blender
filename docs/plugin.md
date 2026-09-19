@@ -105,13 +105,15 @@ required preflight for a normal render. A rotation must change renderer camera
 settings, never rotate or repaint the returned PNG.
 
 `request.animation="360", request.gif=true` submits one animation job. Defaults
-for this consumer interface are 640×360, 32 samples, 3 seconds, 12 fps; explicit
+for this consumer interface are 960×540, 48 samples, 3 seconds, 12 fps; explicit
 settings win. PyMOL and ordinary renderer animation defaults are unchanged.
 The inline viewer loads the GIF through an expiring signed preview URL. GIF bytes
 stay outside the tool response, and GIF results do not request file materialization.
 MP4 remains a native attachment when GIF is explicitly false. Internal frame
 archives are not imported. Preview reads retain the artifact until normal expiry;
-inline display does not establish permanent ChatGPT storage.
+inline display does not establish permanent ChatGPT storage. GIF, MP4 and PNG
+download buttons are available in the viewer until the original artifact expires.
+Larger defaults improve detail but increase rendering time.
 GIF/MP4 flatten transparency onto white; PNG preserves alpha.
 
 Public shared animation is disabled by default. The operator can explicitly enable

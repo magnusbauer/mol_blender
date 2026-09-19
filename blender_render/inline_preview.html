@@ -5,16 +5,19 @@
 <title>Molecular render</title>
 <style>
 :root{color-scheme:light dark;font:14px system-ui,sans-serif}
-body{margin:0;padding:12px}img{display:block;width:100%;max-height:640px;object-fit:contain;border-radius:8px;background:#eee}img[hidden]{display:none}p{margin:0;padding:12px;color:inherit}
+html,body{margin:0;padding:0;background:transparent}img{display:block;width:100%;height:auto;object-fit:contain}nav{display:flex;gap:8px;flex-wrap:wrap;padding:10px 0}nav[hidden]{display:none}a{font:inherit;color:inherit;border:1px solid #8886;border-radius:6px;padding:7px 12px;text-decoration:none}img[hidden]{display:none}p{margin:0;padding:12px;color:inherit}
 </style>
+<main id="render">
 <img id="preview" alt="Blender molecular render" hidden>
 <p id="status" role="status">Waiting for the rendered image…</p>
+<nav id="downloads" aria-label="Download render" hidden></nav>
+</main>
 <script>
 const image = document.getElementById('preview');
 const status = document.getElementById('status');
 let shown = false;
 function resize() {
-  const height = document.documentElement.scrollHeight;
+  const height = Math.ceil(document.getElementById('render').getBoundingClientRect().height);
   window.openai?.notifyIntrinsicHeight?.(height);
   if (parent !== window) parent.postMessage({jsonrpc:'2.0',method:'ui/notifications/size-changed',params:{height}}, '*');
 }
@@ -23,6 +26,29 @@ function render(envelope) {
   // ChatGPT wraps the MCP envelope; MCP Apps sends it directly. Older
   // ChatGPT bridges expose the hidden metadata as the value itself.
   const result = envelope.mcp_tool_result || envelope.call_tool_result || envelope;
+  const links = result._meta?.downloads || result.downloads;
+  if (Array.isArray(links)) {
+    const bar = document.getElementById('downloads');
+    bar.replaceChildren();
+    for (const item of links) {
+      if (!['render.gif','render.mp4','render.png'].includes(item.name)) continue;
+      try {
+        const url = new URL(item.url);
+        if (url.protocol !== 'https:' || url.username || url.password || !url.pathname.startsWith('/download/')) continue;
+        const link = document.createElement('a');
+        link.textContent = 'Download ' + item.name.split('.').pop().toUpperCase();
+        link.href = url.href; link.target = '_blank'; link.rel = 'noopener noreferrer';
+        link.addEventListener('click', event => {
+          if (window.openai?.openExternal) {
+            event.preventDefault(); window.openai.openExternal({href:link.href});
+          }
+        });
+        bar.append(link);
+      } catch (_) {}
+    }
+    bar.hidden = !bar.children.length;
+    resize();
+  }
   const preview = result._meta?.preview || result.preview ||
     result.content?.find(item => item.type === 'image' && ['image/png','image/gif'].includes(item.mimeType));
   if (preview?.mimeType === 'image/gif' && typeof preview.url === 'string' && preview.url.length < 4096) {
@@ -44,6 +70,7 @@ function render(envelope) {
     status.textContent = 'The image preview is unavailable. Rendering has not been repeated.';
   }
 }
+new ResizeObserver(resize).observe(document.getElementById('render'));
 image.onload = () => {
   shown = true;
   image.hidden = false;

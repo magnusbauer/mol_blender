@@ -28,7 +28,7 @@ def test_motion_defaults_are_bounded_and_normalization_is_stable():
     assert contract.normalize_request(normalized) == normalized
     style = resolve_options(contract.render_options(normalized), {})['style_doc']
     assert style['output']['animation'] == {'mode':'360','duration':3,'fps':12,'gif':True}
-    assert (style['output']['width'],style['output']['height'],style['output']['samples']) == (640,360,32)
+    assert (style['output']['width'],style['output']['height'],style['output']['samples']) == (960,540,48)
     explicit = contract.normalize_request({**value,'width':320,'height':240,'samples':64,'duration':1,'fps':4})
     assert contract.normalize_request(explicit) == explicit
     assert resolve_options(contract.render_options(explicit), {})['style_doc']['output']['samples'] == 64
@@ -73,6 +73,8 @@ def test_single_animation_job_returns_gif_not_frame_archive(consumer, gif_reques
     service._execute(service.store.claim())
     response = call(server(service), 'render_result', {'job_id':job['job_id']})
     assert record(response)['complete']
+    assert {d['name'] for d in response.meta['downloads']} == ({'render.gif','render.mp4','render.png'} if gif_requested else {'render.mp4','render.png'})
+    assert 'downloads' not in record(response)
     assert response.meta['preview']['mimeType'] == ('image/gif' if gif_requested else 'image/png')
     if gif_requested:
         assert 'data' not in response.meta['preview']

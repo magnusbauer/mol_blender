@@ -39,8 +39,8 @@ def digests(records):
         allow_nan=False).encode()).hexdigest() for key, value in records.items()}
 
 
-EXPECTED_DIGESTS = {'hosted_default': 'af13d7d2de72ef0fe914f77467b6829e6c0561e37025625e05d1fb9f4714b2c7',
- 'trusted_default': '4e61d5d7b12058def3e9ed91bca843a13e32bcd36d362eca4f831ced6729cee8',
- 'hosted_compatibility': 'e7d10e83dd4fcc999b1d70a0fd9adb3d86ee6b314f8965335d0e48c0a4c5e5fc',
- 'trusted_compatibility': '1ddb87b975670429a609227a474dff1f3311828cdd9f2687e79f9c6208df4932',
- 'legacy_widget': '9c2efb83207885cc660f2ae77dcbc2d94783ecfefbb70a3ce947d08ba9d86d66'}
+EXPECTED_DIGESTS = {'hosted_default': '16adc3c9add0892925b275e7c947592e83f06942d94a9ca040d2708a39830a63',
+ 'trusted_default': 'fc545d27d9cea27139d78892a1e7723c79f3523be77b4d6c8fb988fa774faf02',
+ 'hosted_compatibility': '31bf5121c111920c6e3fa8dbd778da0c13e905054856269f931808a21c10c0d4',
+ 'trusted_compatibility': '93f9e3c0c68f2b7602d0e087d454dfa14b78a3d95292369810b43d6312147820',
+ 'legacy_widget': '332a5171ce35f2e5ba5f6da14818b2ba6449c2137c5b139d1df632b6ba533c47'}

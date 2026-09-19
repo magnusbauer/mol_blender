@@ -1,5 +1,20 @@
 # Blender Render implementation progress
 
+## Viewer controls and sharper defaults — September 19
+
+The user's screenshot now provides actual ChatGPT inline-display evidence for
+viewer v5. It also shows excess framing and missing download controls. Viewer v6
+removes authored padding/background and requests no host border, measures content
+rather than viewport height, and observes content resizing. Widget-only metadata
+carries signed GIF/MP4/PNG download URLs; buttons use the host's openExternal bridge
+with narrowly allowed redirect origins, or ordinary new-tab links as fallback.
+Only clicking downloads transfers files; the original delivery cleanup and expiry
+rules still apply. No automatic GIF materialization or encoded GIF response returns.
+Consumer animation defaults increase from 640×360/32 samples to 960×540/48 samples;
+explicit settings and non-consumer renderer defaults remain unchanged. Frame count
+stays 36 at 12 fps over three seconds. This increases render work; no new quality
+preset timing or new GPU render is claimed. Existing artifacts are not upscaled.
+
 ## Viewer loading compatibility — September 19
 
 Following a real ChatGPT “Could not open this app” report, viewer v5 retains read

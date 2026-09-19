@@ -79,13 +79,13 @@ def normalize_request(value, *, trusted=False):
         if motion:
             if motion.get('animation', 'none') != 'none':
                 # Small interactive movies by default; explicit quality wins.
-                controls.setdefault('width', canonical['hard_requirements']['width'] or canonical['overrides'].get('output', {}).get('width', 640))
-                controls.setdefault('height', canonical['hard_requirements']['height'] or canonical['overrides'].get('output', {}).get('height', 360))
-                controls.setdefault('samples', canonical['overrides'].get('output', {}).get('samples', 32))
+                controls.setdefault('width', canonical['hard_requirements']['width'] or canonical['overrides'].get('output', {}).get('width', 960))
+                controls.setdefault('height', canonical['hard_requirements']['height'] or canonical['overrides'].get('output', {}).get('height', 540))
+                controls.setdefault('samples', canonical['overrides'].get('output', {}).get('samples', 48))
                 motion.setdefault('fps', 12)
                 motion.setdefault('duration', 3)
                 motion.setdefault('gif', True)
-            resolve_motion(motion, {'width': controls.get('width', 640), 'height': controls.get('height', 360)})
+            resolve_motion(motion, {'width': controls.get('width', 960), 'height': controls.get('height', 540)})
         hard, edits = canonical['hard_requirements'], canonical['overrides']
         # Hard requirements and explicit output controls cannot disagree. The
         # resolver still owns precedence between convenience controls and JSON.

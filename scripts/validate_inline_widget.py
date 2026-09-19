@@ -17,7 +17,7 @@ import blender_render
 html=Path(blender_render.__file__).with_name('inline_preview.html').read_text()
 with sync_playwright() as p:
  browser=p.chromium.launch(executable_path=args.browser,headless=True,args=['--no-sandbox'])
- for mode in ['initial','notification','wrapped','globals','missing','invalid','gif','gif_url','bad_url']:
+ for mode in ['initial','notification','wrapped','globals','missing','invalid','gif','gif_url','bad_url','downloads']:
   page=browser.new_page();requests=[];page.on('request',lambda r: requests.append(r.url))
   if mode=='initial':page.add_init_script('window.openai='+json.dumps({'toolResponseMetadata':{'mcp_tool_result':{'_meta':{'preview':preview}}}}))
   page.goto('about:blank');page.set_content(html)
@@ -32,7 +32,11 @@ with sync_playwright() as p:
    result['_meta']['preview']={'mimeType':'image/gif','url':'https://render.example.org/preview/test'}
   if mode == 'bad_url':
    result['_meta']['preview']={'mimeType':'image/gif','url':'javascript:alert(1)'}
-  if mode in ('notification','missing','invalid','gif','gif_url','bad_url'):
+  if mode == 'downloads':
+   result['_meta']['downloads']=[{'name':'render.'+ext,'url':'https://render.example.org/download/'+ext} for ext in ('gif','mp4','png')]+[{'name':'render.gif','url':'javascript:alert(1)'}]
+   page.evaluate('window.openai={openExternal:({href})=>window.clicked=href}')
+  if mode in ('notification','missing','invalid','gif','gif_url','bad_url','downloads'):
+
 
    if mode=='missing':result['_meta']['preview']=None
    if mode=='invalid':result['_meta']['preview']={'mimeType':'image/png','data':'https://evil.invalid/image.png'}
@@ -47,10 +51,14 @@ with sync_playwright() as p:
    page.wait_for_function("!document.getElementById('preview').hidden && document.getElementById('preview').naturalWidth===80")
    assert page.locator('#status').is_hidden()
   assert requests == (['https://render.example.org/preview/test'] if mode == 'gif_url' else []), requests
+  if mode == 'downloads':
+   assert page.locator('#downloads a').count()==3
+   page.get_by_text('Download GIF',exact=True).click()
+   assert page.evaluate('window.clicked')=='https://render.example.org/download/gif'
   page.close();print(mode,'passed')
  # Exercise the actual parent/iframe initialization sequence, not only globals.
  page=browser.new_page()
- page.set_content('<iframe id="app" sandbox="allow-scripts"></iframe>')
+ page.set_content('<iframe id="app" style="height:1000px" sandbox="allow-scripts"></iframe>')
  page.evaluate("""({html, result}) => {
    window.ready = false; window.pong = false;
    const frame = document.getElementById('app');
@@ -63,6 +71,7 @@ with sync_playwright() as p:
        frame.contentWindow.postMessage({jsonrpc:'2.0',id:'probe',method:'ping'}, '*');
        frame.contentWindow.postMessage({jsonrpc:'2.0',method:'ui/notifications/tool-result',params:result}, '*');
      }
+     if (m.method === 'ui/notifications/size-changed') window.measuredHeight=m.params.height;
      if (m.id === 'probe' && m.result) window.pong = true;
    });
    frame.srcdoc = html;
@@ -70,5 +79,6 @@ with sync_playwright() as p:
  page.wait_for_function('window.ready && window.pong')
  frame=page.frames[1]
  frame.wait_for_function("!document.getElementById('preview').hidden && document.getElementById('preview').naturalWidth===80")
+ page.wait_for_function('window.measuredHeight > 0 && window.measuredHeight < 500')
  page.close();print('sandbox handshake and ping passed')
  browser.close()

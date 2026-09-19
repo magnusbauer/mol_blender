@@ -61,7 +61,7 @@ class HostedRenderRequest(StrictModel):
     duration: float | None = Field(default=None, gt=0, le=15)
     fps: int | None = Field(default=None, ge=1, le=60)
     rock_angle: float | None = Field(default=None, gt=0, le=45)
-    gif: bool | None = Field(default=None, description='Return the rendered GIF directly. Animations default to GIF, 640x360, 32 samples, 3 seconds and 12 fps; explicit settings override those defaults.')
+    gif: bool | None = Field(default=None, description='Return the rendered GIF directly. Animations default to GIF, 960x540, 48 samples, 3 seconds and 12 fps; explicit settings override those defaults.')
 
     @model_validator(mode='before')
     @classmethod

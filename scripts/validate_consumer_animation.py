@@ -50,6 +50,6 @@ try:
   assert im.n_frames==36 and im.info['loop']==0
  with Image.open(root/'render.png') as im:
   assert im.convert('RGBA').getchannel('A').getextrema()==(255,255)
- evidence={'seconds':time.monotonic()-started,'frames':36,'size':[640,360],'samples':32,'gif_bytes':(root/'render.gif').stat().st_size,'stage_history':status.get('stage_history'),'platform':'local Apptainer GPU; in-process MCP; not hosted OAuth or ChatGPT'}
+ evidence={'seconds':time.monotonic()-started,'frames':36,'size':[960,540],'samples':48,'gif_bytes':(root/'render.gif').stat().st_size,'stage_history':status.get('stage_history'),'platform':'local Apptainer GPU; in-process MCP; not hosted OAuth or ChatGPT'}
  (root/'evidence.json').write_text(json.dumps(evidence,indent=2));print(json.dumps(evidence),flush=True)
 finally: backend.stop();store.close()
