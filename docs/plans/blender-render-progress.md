@@ -1,5 +1,30 @@
 # Blender Render implementation progress
 
+## Reported ChatGPT animation timeout — September 19
+
+The user supplied job `46a7971a2f1ae4a81f2683c2cc7110fa` after a 31-minute
+ChatGPT attempt. Read-only inspection of the existing controller and provider
+logs confirms conversion completed, the worker reached `rendering`, and the
+controller logged `ReadTimeout` after submission. The operation is fenced as
+`execution_unknown`, with no result inventory. Its $0.792 reservation remains
+held; it has not been retried, cleared, or marked successful.
+
+The accepted specification was neon_duplex_hero, 960x540, 48 samples, six seconds
+at 24 fps (144 frames), GIF enabled, GPU required; the input summary reports 692
+atoms. The GPU container has stopped. Provider logs do not retain Blender's
+frame-level progress or a definitive reason for the stall. There is no evidence
+that this failure reached file saving. Deployment health and earlier local
+Apptainer animation success did not establish hosted L4 animation completion.
+No root cause or corrective implementation is claimed at this checkpoint.
+
+Prepared and locally validated a separate public-1QYS diagnostic with the same
+settings and deployed renderer image. It has a five-minute sandbox limit, a
+$0.25 durable one-shot reservation, no credentials/network/Volumes inside the
+sandbox, and captures frame progress plus GPU utilization. The shared controller
+SQLite database is not opened for writing by the diagnostic. Paid execution is
+pending the user's explicit approval; no diagnostic GPU allocation, service
+upgrade, or replacement render occurred during this investigation.
+
 ## ChatGPT persistence deployment — September 19
 
 User-authorized deployment of `566cba2` completed to the existing owner-restricted
