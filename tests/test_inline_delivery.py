@@ -86,7 +86,7 @@ def test_cached_viewer_versions_remain_readable(consumer):
     from fastmcp import Client
     async def run():
         async with Client(server(consumer[0])) as client:
-            for version in range(1, 11):
+            for version in range(1, 12):
                 uri = f'ui://blender-render/inline-result-v{version}.html'
                 resource = (await client.read_resource(uri))[0]
                 assert str(resource.uri) == uri
@@ -95,3 +95,30 @@ def test_cached_viewer_versions_remain_readable(consumer):
                 assert 'openai/widgetDomain' not in resource.meta
                 assert "message.method === 'ping'" in resource.text
     asyncio.run(run())
+
+
+def test_private_http_public_origin_reaches_downloads_and_widget(consumer):
+    import asyncio
+    from fastmcp import Client
+    from blender_render import mcp_server
+    service = consumer[0]
+    job = submit(service)
+    service._execute(service.store.claim())
+    mcp = mcp_server.create_private_http(service, 'x' * 48, public_url='https://test.example.org')
+    result = call(mcp, 'render_result', {'job_id': job['job_id']})
+    assert not result.is_error
+    assert result.meta['saveImage']['url'].startswith('https://test.example.org/preview/')
+    async def run():
+        async with Client(mcp) as client:
+            resource = (await client.read_resource(mcp_server.INLINE_PREVIEW_URI))[0]
+            assert resource.meta['ui']['csp']['connectDomains'] == ['https://test.example.org']
+    asyncio.run(run())
+
+
+def test_private_http_rejects_non_origin_public_urls(consumer):
+    import pytest
+    from blender_render.mcp_server import create_private_http
+    for url in ['http://example.org', 'https://example.org/path', 'https://u:p@example.org',
+                'https://example.org?token=secret', 'https://example.org#fragment']:
+        with pytest.raises(ValueError, match='HTTPS origin'):
+            create_private_http(consumer[0], 'x' * 48, public_url=url)

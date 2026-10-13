@@ -11,6 +11,8 @@ html,body{margin:0;padding:0;background:transparent}img{display:block;width:100%
 <img id="preview" alt="Blender molecular render" hidden>
 <p id="status" role="status">Waiting for the rendered image…</p>
 <nav id="downloads" aria-label="Download render" hidden></nav>
+<button id="share" type="button" hidden>Ask ChatGPT about this image</button>
+<p id="handoff" role="status" hidden></p>
 <button id="save" type="button" hidden>Save files to chat</button>
 <p id="saved" role="status" hidden></p>
 </main>
@@ -21,11 +23,93 @@ let shown = false;
 let saveSource = null;
 let saveFiles = [];
 let saving = false;
-const autoSaveAttempts = new Set();
 const pendingUploads = new Map();
 let restoredFileId = null;
 const saveButton = document.getElementById('save');
 const savedStatus = document.getElementById('saved');
+// Standard MCP Apps image delivery is independent of optional file storage.
+let hostReady = false;
+let hostCapabilities = {};
+let currentImage = null;
+let contextKey = null;
+let contextBusy = false;
+let sharing = false;
+const postedImages = new Set();
+const rpc = new Map();
+let rpcSequence = 0;
+const shareButton = document.getElementById('share');
+const handoffStatus = document.getElementById('handoff');
+function requestHost(method, params) {
+  return new Promise((resolve, reject) => {
+    const id = 'image-' + (++rpcSequence);
+    const timer = setTimeout(() => { rpc.delete(id); reject(new Error('Host response timed out')); }, 10000);
+    rpc.set(id, {resolve, reject, timer});
+    parent.postMessage({jsonrpc:'2.0', id, method, params}, '*');
+  });
+}
+function imageContent(value) {
+  return [{type:'text', text:'Rendered molecular image' + (value.job ? ' for job ' + value.job : '') + '.'},
+          {type:'image', mimeType:value.mimeType, data:value.data}];
+}
+function validModelImage(value) {
+  return value && ['image/png','image/jpeg'].includes(value.mimeType) &&
+    typeof value.data === 'string' && value.data.length > 0 && value.data.length <= 2796204 &&
+    /^[A-Za-z0-9+/]+={0,2}$/.test(value.data);
+}
+function updateHandoff() {
+  shareButton.hidden = !(hostReady && currentImage && hostCapabilities.message?.image);
+  shareButton.disabled = sharing || !!(currentImage && postedImages.has(currentImage.key));
+  shareButton.textContent = currentImage && postedImages.has(currentImage.key) ? 'Image sent to ChatGPT' : 'Ask ChatGPT about this image';
+  if (!hostReady || !currentImage || contextBusy || contextKey === currentImage.key ||
+      !hostCapabilities.updateModelContext?.image) return;
+  const value = currentImage;
+  contextKey = value.key; // Do not retry a failed/ambiguous request automatically.
+  contextBusy = true;
+  requestHost('ui/update-model-context', {content:imageContent(value)})
+    .then(result => {
+      if (result?.isError) throw new Error('Context rejected');
+      if (currentImage?.key === value.key) {
+        handoffStatus.hidden = false;
+        handoffStatus.textContent = 'Image supplied as context for your next message.';
+      }
+    })
+    .catch(() => {
+      if (currentImage?.key === value.key) {
+        handoffStatus.hidden = false;
+        handoffStatus.textContent = 'Image context could not be confirmed. You can send it using the button.';
+      }
+    })
+    .finally(() => { contextBusy = false; updateHandoff(); });
+}
+function setModelImage(result) {
+  const preview = result._meta?.preview || result.preview;
+  const value = validModelImage(preview) ? preview : result.content?.find(validModelImage);
+  if (!value) return;
+  const job = result.structuredContent?.job_id || result._meta?.saveImage?.jobId || '';
+  const key = job + '/' + value.mimeType + '/' + value.data;
+  if (currentImage?.key === key) return;
+  currentImage = {mimeType:value.mimeType, data:value.data, key, job};
+  handoffStatus.hidden = true;
+  updateHandoff();
+}
+shareButton.onclick = async () => {
+  if (sharing || !hostReady || !currentImage || !hostCapabilities.message?.image || postedImages.has(currentImage.key)) return;
+  const value = currentImage;
+  sharing = true;
+  updateHandoff();
+  handoffStatus.hidden = false;
+  handoffStatus.textContent = 'Sending image to ChatGPT…';
+  try {
+    const content = imageContent(value);
+    content[0].text += ' Describe what you can see in this image.';
+    const result = await requestHost('ui/message', {role:'user', content});
+    if (result?.isError) throw new Error('Image rejected');
+    postedImages.add(value.key);
+    if (currentImage?.key === value.key) handoffStatus.textContent = 'Image sent to ChatGPT for this conversation.';
+  } catch (_) {
+    if (currentImage?.key === value.key) handoffStatus.textContent = 'Image delivery is unconfirmed. Check the chat before retrying.';
+  } finally { sharing = false; updateHandoff(); }
+};
 let storedImage = window.openai?.widgetState?.privateContent?.savedImage || null;
 let savedFiles = window.openai?.widgetState?.privateContent?.savedFiles || {};
 if (storedImage && !savedFiles['render.png']) savedFiles['render.png'] = storedImage;
@@ -111,15 +195,9 @@ function refreshSaving() {
   saveButton.hidden = !available;
   if (!available) {
     savedStatus.hidden = false;
-    savedStatus.textContent = 'This viewer cannot save files into ChatGPT. Allow ChatGPT’s file import when prompted; this preview alone is temporary.';
+    savedStatus.textContent = 'File saving is unavailable in this host. The image is still visible in this panel.';
     resize();
   }
-  autoSave();
-}
-function autoSave() {
-  if (!saveSource || saving || saveFiles.every(alreadySaved) ||
-      saveFiles.every(file => alreadySaved(file) || autoSaveAttempts.has(file.jobId + '/' + file.name)) || !window.openai?.uploadFile || !window.openai?.setWidgetState) return;
-  saveButton.onclick();
 }
 saveButton.onclick = async () => {
   if (saving || !saveSource || !window.openai?.uploadFile || !window.openai?.setWidgetState) return;
@@ -129,7 +207,6 @@ saveButton.onclick = async () => {
   for (const source of sources) {
     if (alreadySaved(source)) continue;
     const key = source.jobId + '/' + source.name;
-    autoSaveAttempts.add(key);
     savedStatus.textContent = 'Saving ' + source.name.split('.').pop().toUpperCase() + ' to ChatGPT…';
     try {
       let fileId = pendingUploads.get(key);
@@ -150,7 +227,7 @@ saveButton.onclick = async () => {
       const nextFiles = {...savedFiles, [source.name]:{fileId, jobId:source.jobId}};
       const nextImage = nextFiles['render.png'] || null;
       await window.openai.setWidgetState({modelContent:'Saved render files: ' + Object.keys(nextFiles).join(', '),
-        privateContent:{savedImage:nextImage, savedFiles:nextFiles}, imageIds:nextImage ? [nextImage.fileId] : []});
+        privateContent:{savedImage:nextImage, savedFiles:nextFiles}});
       savedFiles = nextFiles; storedImage = nextImage;
       pendingUploads.delete(key);
       downloadControls(downloadLinks);
@@ -162,7 +239,6 @@ saveButton.onclick = async () => {
   saveButton.disabled = !failed.length;
   saveButton.textContent = failed.length ? 'Retry saving files' : 'Files saved';
   saving = false; resize();
-  autoSave();
 };
 function resize() {
   const height = Math.ceil(document.getElementById('render').getBoundingClientRect().height);
@@ -174,6 +250,7 @@ function render(envelope) {
   // ChatGPT wraps the MCP envelope; MCP Apps sends it directly. Older
   // ChatGPT bridges expose the hidden metadata as the value itself.
   const result = envelope.mcp_tool_result || envelope.call_tool_result || envelope;
+  setModelImage(result);
   const legacy = result._meta?.saveImage || result.saveImage;
   const files = result._meta?.saveFiles || result.saveFiles || (legacy ? [{...legacy,name:'render.png',mimeType:'image/png'}] : []);
   const source = files.find(file => fileTypes[file.name]);
@@ -235,12 +312,22 @@ image.onerror = () => {
 window.addEventListener('message', event => {
   if (event.source !== parent || event.data?.jsonrpc !== '2.0') return;
   const message = event.data;
+  const waiting = rpc.get(message.id);
+  if (waiting && ("result" in message || "error" in message)) {
+    clearTimeout(waiting.timer); rpc.delete(message.id);
+    if (message.error) waiting.reject(new Error("Host rejected request"));
+    else waiting.resolve(message.result);
+    return;
+  }
   if (message.method === 'ping' && message.id !== undefined) {
     parent.postMessage({jsonrpc:'2.0',id:message.id,result:{}}, '*');
   }
   if (message.method === 'ui/notifications/tool-result') render(message.params);
   if (message.id === 'initialize' && message.result) {
+    hostReady = true;
+    hostCapabilities = message.result.hostCapabilities || {};
     parent.postMessage({jsonrpc:'2.0',method:'ui/notifications/initialized'}, '*');
+    updateHandoff();
   }
 });
 window.addEventListener('openai:set_globals', event => {

@@ -233,3 +233,23 @@ def test_plane_cutout_invalid_plane_keys_and_seal_values_fail_validation():
     assert "ligand_cutout_plane_scales.right" in message
     assert "ligand_cutout_seal_mode" in message
     assert "ligand_cutout_seal_depth_scale" in message
+
+
+@pytest.mark.parametrize("threads", [0, -1, 65, 2.5, True, "2"])
+def test_invalid_render_thread_limit_is_rejected(threads):
+    style = _example_style()
+    style["renderer"]["threads"] = threads
+    with pytest.raises(StyleValidationError):
+        validate_style_document(style)
+
+
+def test_cpu_smoke_options_resolve_exact_limits():
+    from blender_render.spec import resolve_options
+    options = json.loads((PACKAGE.parent / "examples/cpu-smoke-options.json").read_text())
+    payload = {"view": {"pymol_view": [1,0,0,0,1,0,0,0,1,0,0,-50,0,0,0,1,100,0],
+                        "viewport_px": [800,600], "fov_deg":20, "orthoscopic":False}}
+    style = resolve_options(options, payload)["style_doc"]
+    assert {k: style["output"][k] for k in ("width", "height", "samples")} == {"width":128, "height":128, "samples":4}
+    assert style["renderer"]["device"] == "CPU"
+    assert style["renderer"]["require_gpu"] is False
+    assert style["renderer"]["threads"] == 2

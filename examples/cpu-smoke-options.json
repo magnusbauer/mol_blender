@@ -1,0 +1,15 @@
+{
+  "preset": "preset_1_interface",
+  "width": 128,
+  "height": 128,
+  "samples": 4,
+  "save_blend": false,
+  "overrides": {
+    "renderer": {
+      "device": "CPU",
+      "require_gpu": false,
+      "threads": 2,
+      "denoise": false
+    }
+  }
+}

@@ -83,6 +83,7 @@ def parser():
     serve.add_argument('--worker-profile', default='', help='Dispatch admitted jobs through a configured HPC profile')
     serve.add_argument("--idle-timeout", type=int, default=900)
     serve.add_argument("--mcp", action="store_true")
+    serve.add_argument("--public-url", default="", help="HTTPS origin of a private reverse proxy; used for MCP images and downloads")
     serve.add_argument("--job-timeout", type=int, default=1800)
     gateway = commands.add_parser("gateway", help="Run your lab's GitHub-authenticated HTTPS MCP gateway")
     gateway.add_argument("--profile", required=True)
@@ -147,9 +148,9 @@ def serve(args):
         mcp = None
         if args.mcp:
             from .mcp_server import create_private_http
-            mcp = create_private_http(service, token)
+            mcp = create_private_http(service, token, public_url=args.public_url)
         controller_tokens = {args.controller_token_file.read_text().strip(): 'controller'} if args.controller_token_file else None
-        app = create_app(service, token=token, mcp_server=mcp, controller_tokens=controller_tokens)
+        app = create_app(service, token=token, public_url=args.public_url, mcp_server=mcp, controller_tokens=controller_tokens)
         server = uvicorn.Server(uvicorn.Config(app, host=args.host, port=args.port, log_level="warning"))
         app.state.shutdown = lambda: setattr(server, "should_exit", True)
 

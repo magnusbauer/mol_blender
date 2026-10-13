@@ -204,9 +204,14 @@ def _run(config_path: Path) -> None:
                 output_png=output_png, custom_script=package / "developer_blender.py",
                 run_manifest_path=run_manifest, use_apptainer=False, apptainer_image="")
             command[1:1] = ["--factory-startup", "--disable-autoexec", "--python-use-system-env", "--python-exit-code", "1"]
+            threads = resolved["style_doc"]["renderer"].get("threads")
+            if threads is not None:
+                command[1:1] = ["--threads", str(threads)]
             env = dict(os.environ)
             env.update(PYTHONPATH=os.pathsep.join([str(package.parent), *cfg["runtime_paths"]]),
                        PRESS_BIOTITE_CCD_PATH=cfg["ccd"], BLENDER_RENDER_DEV_CONFIG=str(config_path))
+            if threads is not None:
+                env.update(OMP_NUM_THREADS=str(threads), OPENBLAS_NUM_THREADS=str(threads), VECLIB_MAXIMUM_THREADS=str(threads))
             started = time.monotonic()
             with (output / "blender.log").open("a") as log:
                 process = subprocess.Popen(command, cwd=root / "source", env=env, stdout=log, stderr=subprocess.STDOUT)

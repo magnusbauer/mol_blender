@@ -882,6 +882,9 @@ def _configure_renderer(scene: bpy.types.Scene, style_doc: dict[str, Any]) -> No
         engine = "BLENDER_EEVEE"
 
     scene.render.engine = engine
+    scene.render.threads_mode = "FIXED" if "threads" in renderer else "AUTO"
+    if "threads" in renderer:
+        scene.render.threads = int(renderer["threads"])
     scene.render.resolution_x = int(output["width"])
     scene.render.resolution_y = int(output["height"])
     scene.render.resolution_percentage = 100
@@ -4330,6 +4333,7 @@ def _render(args: argparse.Namespace) -> tuple:
             manifest_doc["runtime_versions"] = {"blender": bpy.app.version_string, "molecularnodes": mn_version,
                 "python": ".".join(map(str, sys.version_info[:3])), "numpy": np.__version__, "biotite": biotite.__version__}
             manifest_doc["cycles_device"] = json.loads(scene.get("bridge_device_info", "{}"))
+            manifest_doc["render_threads"] = {"mode": scene.render.threads_mode, "count": scene.render.threads}
             from blender_render.telemetry import record, write_timings
             write_timings(run_manifest_path, [
                 record('scene_build', 'worker', geometry_ready-started),

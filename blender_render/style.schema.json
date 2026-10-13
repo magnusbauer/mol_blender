@@ -132,6 +132,12 @@
         "adaptive_sampling": {
           "type": "boolean"
         },
+        "threads": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 64,
+          "description": "Fixed render thread count; omit for automatic scheduling."
+        },
         "require_gpu": {
           "type": "boolean"
         },

@@ -61,13 +61,14 @@ with sync_playwright() as p:
  page.route('https://render.example.org/preview/late',lambda route:route.fulfill(content_type='image/png',body=buf.getvalue()))
  page.evaluate("r=>window.postMessage({jsonrpc:'2.0',method:'ui/notifications/tool-result',params:r},'*')",
    {'_meta':{'saveFiles':[{'name':'render.png','jobId':'late','url':'https://render.example.org/preview/late'}]}})
- page.wait_for_function("document.getElementById('saved').textContent.includes('cannot save')")
+ page.wait_for_function("document.getElementById('saved').textContent.includes('File saving is unavailable')")
  assert page.locator('#saved').is_visible()
  page.evaluate("window.openai={uploadFile:async()=>({fileId:'file-late'}),setWidgetState:s=>window.savedState=s}")
- page.wait_for_function("window.savedState?.imageIds?.[0]==='file-late'")
+ page.locator('#save').click()
+ page.wait_for_function("window.savedState?.privateContent?.savedFiles?.['render.png']?.fileId==='file-late'")
  assert page.locator('#save').is_visible()
  page.close();print('missing and delayed upload APIs passed')
- # Saving starts once automatically; failed uploads require an explicit retry.
+ # Saving is explicit and independent of model visibility; failures require a retry.
  for fail in (False, True):
   page=browser.new_page()
   page.set_content(html)
@@ -78,11 +79,13 @@ with sync_playwright() as p:
   }}""",fail)
   page.evaluate("r=>window.postMessage({jsonrpc:'2.0',method:'ui/notifications/tool-result',params:r},'*')",
     {'_meta':{'preview':preview,'saveImage':{'jobId':'test-job','url':'https://render.example.org/preview/save'}}})
+  assert page.evaluate('window.uploadCount || 0') == 0
+  page.locator('#save').click()
   if fail:
    page.wait_for_function("document.getElementById('saved').textContent.includes('not saved')")
    assert page.evaluate('window.savedState') is None
   else:
-   page.wait_for_function("window.savedState?.imageIds?.[0]==='file-saved'")
+   page.wait_for_function("window.savedState?.privateContent?.savedFiles?.['render.png']?.fileId==='file-saved'")
    assert page.evaluate('window.uploaded.type')=='image/png'
    state=page.evaluate('window.savedState')
   assert page.evaluate('window.uploadOptions') == {'library':True}
@@ -102,7 +105,7 @@ with sync_playwright() as p:
  page.set_content(html)
  page.wait_for_function("document.getElementById('preview').naturalWidth===80")
  assert page.evaluate('window.restoredId')=='file-saved'
- page.close();print('automatic save, duplicate suppression, explicit retry, and restore passed')
+ page.close();print('explicit save, duplicate suppression, retry, and restore passed')
  # Multi-file partial failure: a retry must not re-upload successful formats.
  page=browser.new_page();page.set_content(html)
  for ext,mime in [('png','image/png'),('gif','image/gif'),('mp4','video/mp4')]:
@@ -113,9 +116,10 @@ with sync_playwright() as p:
  }}""")
  files=[{'jobId':'movie','name':'render.'+ext,'mimeType':mime,'url':'https://render.example.org/preview/'+ext} for ext,mime in [('png','image/png'),('gif','image/gif'),('mp4','video/mp4')]]
  page.evaluate("r=>window.postMessage({jsonrpc:'2.0',method:'ui/notifications/tool-result',params:r},'*')",{'_meta':{'saveFiles':files}})
+ page.locator('#save').click()
  page.wait_for_function("document.getElementById('saved').textContent.includes('render.mp4 not saved')")
  assert set(page.evaluate('Object.keys(window.savedState.privateContent.savedFiles)'))=={'render.png','render.gif'}
- assert page.evaluate('window.savedState.imageIds')==['file-render.png']
+ assert page.evaluate('window.savedState.imageIds') is None
  page.evaluate('window.rejectVideo=false')
  page.get_by_text('Retry saving files',exact=True).click()
  page.wait_for_function("window.savedState.privateContent.savedFiles['render.mp4']?.fileId")
@@ -134,6 +138,7 @@ with sync_playwright() as p:
  }}""")
  files=[{'jobId':'all','name':name,'url':'https://render.example.org/download/'+name+'?delivery=ack'} for name in formats]
  page.evaluate("r=>window.postMessage({jsonrpc:'2.0',method:'ui/notifications/tool-result',params:r},'*')",{'_meta':{'saveFiles':files}})
+ page.locator('#save').click()
  page.wait_for_function("document.getElementById('saved').textContent.includes('not saved')")
  assert page.evaluate('window.savedState') is None
  assert 'saved in ChatGPT' not in page.locator('#saved').inner_text()
@@ -188,4 +193,46 @@ with sync_playwright() as p:
  frame.wait_for_function("!document.getElementById('preview').hidden && document.getElementById('preview').naturalWidth===80")
  page.wait_for_function('window.measuredHeight > 0 && window.measuredHeight < 500')
  page.close();print('sandbox handshake and ping passed')
+ # Model image delivery uses the standard bridge with exact image bytes.
+ for reject in (False, True):
+  page=browser.new_page()
+  page.set_content('<iframe id="app" style="height:1000px" sandbox="allow-scripts"></iframe>')
+  result={'_meta':{'preview':preview},'structuredContent':{'job_id':'cpu-test'}}
+  page.evaluate("""({html,result,reject}) => {
+    window.calls=[];
+    const frame=document.getElementById('app');
+    window.addEventListener('message', e=>{
+      if(e.source!==frame.contentWindow) return;
+      const m=e.data;
+      if(m.method==='ui/initialize') frame.contentWindow.postMessage({jsonrpc:'2.0',id:m.id,result:{hostCapabilities:{message:{image:true},updateModelContext:{image:true}}}},'*');
+      if(m.method==='ui/notifications/initialized') {
+        frame.contentWindow.postMessage({jsonrpc:'2.0',method:'ui/notifications/tool-result',params:result},'*');
+        frame.contentWindow.postMessage({jsonrpc:'2.0',method:'ui/notifications/tool-result',params:result},'*');
+      }
+      if(['ui/message','ui/update-model-context'].includes(m.method)) {
+        window.calls.push(m);
+        frame.contentWindow.postMessage({jsonrpc:'2.0',id:m.id,result:reject?{isError:true}:{}},'*');
+      }
+    });
+    frame.srcdoc=html;
+  }""",{'html':html,'result':result,'reject':reject})
+  frame=page.frames[1]
+  page.wait_for_function('window.calls.length===1')
+  frame.wait_for_function("document.getElementById('handoff').textContent.includes('confirmed' )" if reject else "document.getElementById('handoff').textContent.includes('supplied as context')")
+  calls=page.evaluate('window.calls')
+  assert calls[0]['method']=='ui/update-model-context'
+  assert calls[0]['params']['content'][1]=={'type':'image',**preview}
+  frame.locator('#share').click()
+  page.wait_for_function('window.calls.length===2')
+  frame.wait_for_function("document.getElementById('handoff').textContent.includes('unconfirmed')" if reject else "document.getElementById('share').textContent==='Image sent to ChatGPT'")
+  calls=page.evaluate('window.calls')
+  assert calls[1]['method']=='ui/message'
+  assert calls[1]['params']['role']=='user'
+  assert calls[1]['params']['content'][1]=={'type':'image',**preview}
+  assert frame.locator('#share').is_enabled()==reject
+  # Context failure never starts a retry loop or an automatic chat message.
+  page.wait_for_timeout(100)
+  assert len(page.evaluate('window.calls'))==2
+  page.close()
+ print('standard image context, explicit image message, duplicate suppression and rejection passed')
  browser.close()
