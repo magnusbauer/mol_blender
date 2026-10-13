@@ -59,7 +59,11 @@ server-wide resource cap. No Modal or cluster deployment is needed.
   saved-file reopening, initialization, standard context/message image bytes,
   duplicate suppression and host rejection. This used a simulated host.
 - Built wheel installed outside the checkout: nine MCP/result-delivery checks passed.
-- Real ChatGPT browser/desktop model-perception checks are still pending.
+- The user subsequently ran the temporary HTTPS diagnostic in ChatGPT and
+  reported that all tests passed. This is user-reported acceptance of the image
+  handoff tests and saved Blender PNG delivery; surface details, trial counts
+  and conversation traces were not recorded here. A fresh render through the
+  deployed plugin remains unverified.
 
 Machine paths, generated environments and local artifacts remain ignored. The
 original checkout and its linked worktrees were not modified.
@@ -103,4 +107,5 @@ identifier, observed response and pass/fail. Repeat with new pictures.
 The launcher was tested through real local HTTP MCP, including rejection of
 ordinary/incorrect paths, and in a browser with each route isolated. Two
 diagnostic tests passed for answer isolation, preserved PNG bytes and session
-limits. The HTTPS tunnel and real ChatGPT remain user-run acceptance checks.
+limits. The user-reported ChatGPT result is recorded above; this diagnostic does
+not establish fresh rendering through a deployed plugin or public-release readiness.
