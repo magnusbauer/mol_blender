@@ -63,3 +63,44 @@ server-wide resource cap. No Modal or cluster deployment is needed.
 
 Machine paths, generated environments and local artifacts remain ignored. The
 original checkout and its linked worktrees were not modified.
+
+## Start the first real ChatGPT image test
+
+From the checkout, run:
+
+```sh
+.venv/bin/python scripts/start_image_handoff_test.py
+```
+
+The launcher starts a loopback MCP diagnostic and a temporary Cloudflare HTTPS
+tunnel. It prints the exact MCP URL. In ChatGPT, add a custom MCP server called
+**Blender CPU Image Test**, paste that URL and select **None** for authentication.
+Access to this diagnostic is restricted by an unguessable, per-run URL path.
+It has only four fixed image-test tools: no uploads, filesystem tools, commands
+or render jobs. It serves generated diagnostic pictures and the existing public
+1BNA preview. Keep the terminal open; Ctrl+C stops both processes. The session
+expires after one hour and allows at most 40 images. Restarting changes the URL.
+
+Use a fresh chat for each route and select this test connection:
+
+1. Ask **Open the background test**. Wait for the panel to report that image
+   context was supplied. In a separate message, ask **Read the five-character
+   code and name the shape and its colour. If you cannot see it, say NO IMAGE.**
+2. In another fresh chat, ask **Open the message test**, then click
+   **Ask ChatGPT about this image**. Background image context is disabled here.
+3. In another fresh chat, ask **Open the no-image control**, then ask the same
+   code/shape question. The panel shows the picture, but neither image-delivery
+   route is enabled. The expected response is that the image is unavailable.
+4. Ask **Open the saved Blender test** to inspect the already-rendered image.
+   This validates delivery of the real PNG, not a new render through ChatGPT.
+
+Compare the answers with the pixels visible in the panel. The random answer is
+never included in ordinary tool text or structured content. An independent local
+oracle is written under `.validation/image-handoff-test/expected.jsonl`; never
+attach that file to the ChatGPT test conversation. Record surface, route, trial
+identifier, observed response and pass/fail. Repeat with new pictures.
+
+The launcher was tested through real local HTTP MCP, including rejection of
+ordinary/incorrect paths, and in a browser with each route isolated. Two
+diagnostic tests passed for answer isolation, preserved PNG bytes and session
+limits. The HTTPS tunnel and real ChatGPT remain user-run acceptance checks.
