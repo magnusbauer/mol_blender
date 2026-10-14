@@ -120,8 +120,9 @@ python -m pytest tests/browser --browser /path/to/chromium
 launcher for the same tests. These checks execute the packaged viewer in a real
 browser with a simulated host; they do not establish live ChatGPT acceptance.
 Library upload, selection and fresh-context reuse share those fixtures.
-`scripts/validate_library_widget.py --browser /path/to/chromium` runs just the
-Library cases. No external file responses are allowed unless supplied by a test.
+Add `--suite library` to the launcher to run just the Library cases, or
+`--suite inline` for the inline viewer cases; the default is `--suite all`.
+No external file responses are allowed unless supplied by a test.
 
 For a live public-image diagnostic, run
 `python scripts/start_image_handoff_test.py --preview /path/to/public-render.png`.

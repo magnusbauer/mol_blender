@@ -160,6 +160,11 @@ def make_server(records, preview_file, *, native_source=None):
     native_source = native_source or NativeTestFile(preview_file)
     native_logged = False
 
+    def record_event(event):
+        with records.open("a") as out:
+            records.chmod(0o600)
+            out.write(json.dumps(event) + "\n")
+
     class TestServer(FastMCP):
         async def _read_resource_mcp(self, uri):
             if native_source.transport == "embedded" and str(uri) == native_source.resource_uri:
@@ -196,12 +201,10 @@ def make_server(records, preview_file, *, native_source=None):
                 raise ValueError("Original test images are disabled")
             answer = native_source.result()
             if not native_logged:
-                with records.open("a") as out:
-                    records.chmod(0o600)
-                    file = answer.structured_content["file"]
-                    out.write(json.dumps({"event":"native_source", "transport":native_source.transport,
-                                          "file_name":file["file_name"],
-                                          "size_bytes":file["size_bytes"], "sha256":file["sha256"]}) + "\n")
+                file = answer.structured_content["file"]
+                record_event({"event":"native_source", "transport":native_source.transport,
+                              "file_name":file["file_name"],
+                              "size_bytes":file["size_bytes"], "sha256":file["sha256"]})
                 native_logged = True
             return answer
 
@@ -222,16 +225,13 @@ def make_server(records, preview_file, *, native_source=None):
             count += 1
             trial = secrets.token_hex(8)
             # This private local oracle is never returned by an MCP tool.
-            with records.open("a") as out:
-                records.chmod(0o600)
-                out.write(json.dumps({"trial": trial, "mode": mode, "expected": expected}) + "\n")
+            record_event({"trial": trial, "mode": mode, "expected": expected})
             metadata = {"preview": {"mimeType": "image/png", "data": base64.b64encode(data).decode()}}
             if library:
                 metadata["saveFiles"] = [{"jobId":trial, "name":"render.png", "mimeType":"image/png",
                                           "fileName":"blender-library-" + trial + ".png", "data":metadata["preview"]["data"]}]
                 metadata["library"] = {"mode":"save", "sha256":hashlib.sha256(data).hexdigest()}
-                with records.open("a") as out:
-                    out.write(json.dumps({"trial":trial, "event":"library_source", "sha256":metadata["library"]["sha256"]}) + "\n")
+                record_event({"trial":trial, "event":"library_source", "sha256":metadata["library"]["sha256"]})
             answer = ToolResult(
                 content=[types.TextContent(type="text", text="Test panel opened. Follow the test instructions; do not infer its image contents.")],
                 structured_content={"job_id": trial, "mode": mode}, meta=metadata)
@@ -275,9 +275,7 @@ def make_server(records, preview_file, *, native_source=None):
             original_disabled = True
             library_trials.clear()
             native_source.disable()
-            with records.open("a") as out:
-                records.chmod(0o600)
-                out.write(json.dumps({"event":"originals_disabled"}) + "\n")
+            record_event({"event":"originals_disabled"})
         return {"original_images_available":False, "next_step":"For native files: stop the launcher, open a fresh chat, and attach the saved file from Space. For the widget comparison: open_library_reuse_test."}
 
     uri = URI + "library_reuse.html"
