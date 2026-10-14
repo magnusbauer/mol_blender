@@ -14,7 +14,7 @@ from fastapi import Depends, FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
 from starlette.background import BackgroundTask
 
-from .config import VERSION
+from .config import VERSION, public_origin
 from .jobs import JobError
 from .service import RenderService
 from .engine import RestartRequired, EngineMismatch, ExecutionUnknown
@@ -25,7 +25,7 @@ class Downloads:
         if len(key) < 32:
             raise ValueError("Download signing key must contain at least 32 characters")
         self.key = key.encode()
-        self.base_url = base_url.rstrip("/")
+        self.base_url = public_origin(base_url)
         self.clock = clock
 
     def url(self, owner: str, job_id: str, name: str, ttl: int = 900, *, preview: bool = False) -> str:

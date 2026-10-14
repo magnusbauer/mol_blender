@@ -134,6 +134,8 @@ def serve(args):
     from .jobs import JobStore, Policy
     from .runtime import file_lock, LocalFileConverter
     from .service import HostBackend, RenderService
+    from .config import public_origin
+    args.public_url = public_origin(args.public_url)
     if args.host not in {"127.0.0.1", "::1", "localhost"}:
         raise ValueError("Bind the private service to loopback. Use SSH forwarding or a TLS/OAuth gateway for remote clients.")
     token = args.token_file.expanduser().read_text().strip()

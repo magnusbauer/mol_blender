@@ -174,9 +174,11 @@ class LocalFileConverter:
             return export_file(path, python=self.python, selection=selection)
 
 
-def export_file(path, *, python="", selection="(all)"):
+def export_file(path, *, python="", selection="(all)", process_threads=None):
     import tempfile
     from .engine import protect
+    from .config import process_thread_environment
+    thread_environment = process_thread_environment(process_threads)
     seal = protect('conversion')
     config = load_config()
     executable = python or config.get("pymol_python", sys.executable)
@@ -184,6 +186,7 @@ def export_file(path, *, python="", selection="(all)"):
         destination = Path(temp) / "payload.json"
         captured = seal.capture(Path(temp)/'blender_render')
         env = os.environ.copy()
+        env.update(thread_environment)
         env['PYTHONPATH'] = str(captured.parent) + os.pathsep + env.get('PYTHONPATH', '')
         protect('conversion')
         result = subprocess.run([executable, str(captured/'export.py'), str(Path(path).expanduser().resolve()), str(destination), "--selection", selection],

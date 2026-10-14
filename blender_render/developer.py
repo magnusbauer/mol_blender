@@ -106,10 +106,13 @@ def capture_preset(identifier: str, catalog_dir: Path, destination: Path) -> dic
 
 def preview(*, checkout: Path, bundle: Path, options: dict, catalog_dir: Path,
             output: Path, blender: Path, runtime_paths: list[Path], ccd: Path,
-            timeout: float = 600, keep_source: bool = False, runtime_wheels: Path | None = None) -> dict:
+            timeout: float = 600, keep_source: bool = False, runtime_wheels: Path | None = None,
+            process_threads: int | None = None) -> dict:
     """Snapshot, then resolve AND render using the snapshot in fresh processes."""
     if timeout < 30:
         raise ValueError("Preview timeout must be at least 30 seconds")
+    from blender_render.config import process_thread_count
+    process_threads = process_thread_count(process_threads)
     for path in (bundle, blender, ccd):
         if not path.is_file():
             raise ValueError("Required local input/runtime file is missing: " + str(path))
@@ -138,7 +141,8 @@ def preview(*, checkout: Path, bundle: Path, options: dict, catalog_dir: Path,
                   "runtime_paths": paths,
                   "runtime_source_paths": [str(path.resolve()) for path in runtime_paths],
                   "ccd": str(run / "components.bcif"), "ccd_source": str(ccd.resolve()),
-                  "ccd_sha256": digest_file(run / "components.bcif"), "timeout": timeout}
+                  "ccd_sha256": digest_file(run / "components.bcif"), "timeout": timeout,
+                  "process_threads": process_threads}
         config_path = run / "preview.json"
         config_path.write_text(json.dumps(config, indent=2, allow_nan=False))
         with (output / "preview.log").open("w") as log:
@@ -164,7 +168,7 @@ def preview(*, checkout: Path, bundle: Path, options: dict, catalog_dir: Path,
 def _run(config_path: Path) -> None:
     """Fresh snapshot Python process; the ordinary rendering transaction owns staging."""
     from blender_render.authoring import resolve_authored
-    from blender_render.config import VERSION
+    from blender_render.config import VERSION, blender_thread_arguments, process_thread_environment
     from blender_render.core import validate_payload_document, build_local_blender_command
     from blender_render.rendering import RenderServerState, _process_render_request
     from blender_render.render_worker_manager import WorkerError
@@ -189,12 +193,14 @@ def _run(config_path: Path) -> None:
     identity.update(render_spec=resolved["render_spec"], package_version=VERSION,
                     controller_module=str(Path(__file__).resolve()), controller_python=sys.executable,
                     controller_python_version=sys.version, cache_hit=False)
+    identity["execution"] = {"process_threads": cfg.get("process_threads")}
     # Code, input, spec and runtime identity are recorded even though previews
     # deliberately have no cache. A failed run cannot be returned as an old PNG.
     identity["preview_key"] = source_digest({"source": identity["sha256"],
         "bundle": identity["bundle_sha256"], "spec": resolved["render_spec"]["sha256"],
         "blender": digest_file(Path(cfg["blender"])), "ccd": cfg["ccd_sha256"],
-        "runtime_paths": cfg["runtime_source_paths"], "runtime_wheels": identity.get("runtime_wheels", {})})
+        "runtime_paths": cfg["runtime_source_paths"], "runtime_wheels": identity.get("runtime_wheels", {}),
+        "process_threads": cfg.get("process_threads")})
     (output / "source.json").write_text(json.dumps(identity, indent=2))
 
     class FreshBlender:
@@ -204,14 +210,12 @@ def _run(config_path: Path) -> None:
                 output_png=output_png, custom_script=package / "developer_blender.py",
                 run_manifest_path=run_manifest, use_apptainer=False, apptainer_image="")
             command[1:1] = ["--factory-startup", "--disable-autoexec", "--python-use-system-env", "--python-exit-code", "1"]
-            threads = resolved["style_doc"]["renderer"].get("threads")
-            if threads is not None:
-                command[1:1] = ["--threads", str(threads)]
+            threads = cfg.get("process_threads")
+            command[1:1] = blender_thread_arguments(threads)
             env = dict(os.environ)
             env.update(PYTHONPATH=os.pathsep.join([str(package.parent), *cfg["runtime_paths"]]),
                        PRESS_BIOTITE_CCD_PATH=cfg["ccd"], BLENDER_RENDER_DEV_CONFIG=str(config_path))
-            if threads is not None:
-                env.update(OMP_NUM_THREADS=str(threads), OPENBLAS_NUM_THREADS=str(threads), VECLIB_MAXIMUM_THREADS=str(threads))
+            env.update(process_thread_environment(threads))
             started = time.monotonic()
             with (output / "blender.log").open("a") as log:
                 process = subprocess.Popen(command, cwd=root / "source", env=env, stdout=log, stderr=subprocess.STDOUT)
@@ -272,6 +276,7 @@ def parser() -> argparse.ArgumentParser:
     run.add_argument("--runtime-wheels", type=Path, help="Existing extension's bundled wheel directory; extracted only into isolated state")
     run.add_argument("--ccd", type=Path, required=True)
     run.add_argument("--timeout", type=float, default=600)
+    run.add_argument("--process-threads", type=int, help="Blender startup and numerical-library threads; separate from renderer.threads")
     run.add_argument("--keep-source", action="store_true", help="Retain isolated snapshot/state for debugging")
     run.add_argument("--save-blend", action="store_true", default=None)
     run.add_argument("--preserve-view", action=argparse.BooleanOptionalAction, default=None,
@@ -307,7 +312,8 @@ def execute(args):
         options["preserve_view"] = args.preserve_view
     return preview(checkout=args.checkout, bundle=args.bundle, options=options, catalog_dir=args.catalog_dir,
                    output=args.output, blender=args.blender, runtime_paths=args.runtime_path,
-                   ccd=args.ccd, timeout=args.timeout, keep_source=args.keep_source, runtime_wheels=args.runtime_wheels)
+                   ccd=args.ccd, timeout=args.timeout, keep_source=args.keep_source, runtime_wheels=args.runtime_wheels,
+                   process_threads=args.process_threads)
 
 
 def main(argv=None):

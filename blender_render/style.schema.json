@@ -136,7 +136,7 @@
           "type": "integer",
           "minimum": 1,
           "maximum": 64,
-          "description": "Fixed render thread count; omit for automatic scheduling."
+          "description": "Per-scene render thread count; omit for automatic scheduling. Does not limit export or numerical-library threads; configure process_threads separately."
         },
         "require_gpu": {
           "type": "boolean"

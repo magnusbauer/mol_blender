@@ -18,6 +18,7 @@ from typing import Any, Callable, TextIO
 from blender_render import core as _bridge_runner
 from blender_render.worker_ipc import IPCUnavailable, WorkerIPC
 from blender_render import compatibility as diagnostics
+from blender_render.config import blender_thread_arguments
 
 
 class WorkerError(RuntimeError):
@@ -57,6 +58,9 @@ class PersistentBlenderWorker:
         self.use_apptainer = bool(use_apptainer)
         self.apptainer_image = str(apptainer_image or "").strip()
         self.worker_start_timeout = max(5.0, float(worker_start_timeout))
+        from .config import load_config, process_thread_count
+        # Freeze process configuration for this worker's lifetime, never per job.
+        self.process_threads = process_thread_count(load_config().get("process_threads"))
 
         self.socket_path: Path | None = None
         self._ipc: WorkerIPC | None = None
@@ -106,6 +110,7 @@ class PersistentBlenderWorker:
         blender_exe = self._resolve_blender_executable()
         command = [
             blender_exe,
+            *blender_thread_arguments(self.process_threads),
             "--background",
             "--python-use-system-env",
             "--python",
@@ -144,6 +149,8 @@ class PersistentBlenderWorker:
     def _subprocess_env(self) -> dict[str, str]:
         env = os.environ.copy()
         from blender_render.config import load_config, config_root
+        from blender_render.config import process_thread_environment
+        env.update(process_thread_environment(self.process_threads, apptainer=self.use_apptainer))
         runtime_site = env.get("BLENDER_RENDER_SITE") or load_config().get("runtime_site", str(config_root() / "runtime" / "site"))
         env["PYTHONPATH"] = str(self._captured_package.parent) + os.pathsep + runtime_site + os.pathsep + env.get("PYTHONPATH", "")
         env["PYTHONUNBUFFERED"] = "1"

@@ -245,7 +245,7 @@ def test_invalid_render_thread_limit_is_rejected(threads):
 
 def test_cpu_smoke_options_resolve_exact_limits():
     from blender_render.spec import resolve_options
-    options = json.loads((PACKAGE.parent / "examples/cpu-smoke-options.json").read_text())
+    options = json.loads((Path(__file__).resolve().parents[1] / "examples/cpu-smoke-options.json").read_text())
     payload = {"view": {"pymol_view": [1,0,0,0,1,0,0,0,1,0,0,-50,0,0,0,1,100,0],
                         "viewport_px": [800,600], "fov_deg":20, "orthoscopic":False}}
     style = resolve_options(options, payload)["style_doc"]
