@@ -18,7 +18,7 @@ from test_jobs_api import Compute, payload
 from test_gateway_recovery import pair
 
 
-CANONICAL_TOOLS = {'render_public_structure', 'render_structure', 'render_status', 'render_result', 'cancel_render',
+CANONICAL_TOOLS = {'get_render_png_file', 'open_saved_image', 'render_public_structure', 'render_structure', 'render_status', 'render_result', 'cancel_render',
                    'list_presets', 'preset_details', 'list_recent_renders', 'recover_render',
                    'recover_transfer', 'available_quota'}
 COMPATIBILITY_TOOLS = {'import_structure', 'submit_render', 'list_structures', 'delete_structure'}
@@ -401,7 +401,7 @@ def test_stdio_default_trust_schemas_do_not_connect(monkeypatch):
         for profile in ('local', 'hosted'):
             async with MCPClient(mcp_server.create_stdio(profile)) as client:
                 tools = {tool.name: tool for tool in await client.list_tools()}
-                assert set(tools) == CANONICAL_TOOLS - {'render_public_structure'}
+                assert set(tools) == CANONICAL_TOOLS - {'render_public_structure', 'open_saved_image', 'get_render_png_file'}
                 assert ('style_doc' in json.dumps(tools['render_structure'].inputSchema)) is (profile == 'local')
                 assert 'rerender' not in json.dumps(tools['render_structure'].inputSchema)
                 assert (await client.call_tool('list_presets', {})).structured_content == presets.compact_catalog()

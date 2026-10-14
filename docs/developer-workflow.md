@@ -106,3 +106,53 @@ Public 1SPS, same geometry, camera and 82 Å focal plane. These are 640 × 480, 
 | f/0.5, selective focus | f/8, deeper focus |
 |---|---|
 | ![Selective focus](../examples/developer/focus.png) | ![Deeper focus](../examples/developer/deep_focus.png) |
+
+### Image-delivery diagnostics
+
+Install the optional `browser` dependencies and select an existing Chrome or
+Chromium executable explicitly:
+
+```sh
+python -m pytest tests/browser --browser /path/to/chromium
+```
+
+`scripts/validate_inline_widget.py --browser /path/to/chromium` is a convenience
+launcher for the same tests. These checks execute the packaged viewer in a real
+browser with a simulated host; they do not establish live ChatGPT acceptance.
+Library upload, selection and fresh-context reuse share those fixtures.
+`scripts/validate_library_widget.py --browser /path/to/chromium` runs just the
+Library cases. No external file responses are allowed unless supplied by a test.
+
+For a live public-image diagnostic, run
+`python scripts/start_image_handoff_test.py --preview /path/to/public-render.png`.
+The PNG must be an existing 128×128 public-fixture render. Use `--local-only` to
+skip the temporary HTTPS tunnel. Records and the capability URL are temporary;
+`--output /path/to/new-directory` explicitly retains them for inspection. This
+launcher exposes diagnostic images only and cannot submit a render.
+The fixture is bounded to 64 KiB. Native file transfer defaults to a temporary
+URL; `--native-transport embedded` selects the diagnostic-only MCP binary-resource
+experiment, with no download fallback. Both modes preserve the original bytes,
+expire with the session, and support `disable_original_images` before saved-file
+reuse. Stopping the launcher also revokes the native source. A successful upload
+or protocol transfer does not confirm Space storage or fresh-chat availability.
+
+The CPU smoke test is opt-in and reuses an installed local Blender/PyMOL runtime:
+
+```sh
+python -m pytest tests/integration/test_cpu_smoke.py --cpu-runtime-config /path/to/runtime.json
+```
+
+The JSON supplies `blender`, `pymol_python`, and `runtime_site`. Run with
+`blender_render` imported from the selected checkout; no runtime installation or
+remote dispatch is performed. `--cpu-output /path/to/new-directory` retains the
+PNG, manifest, and source identity. The compatibility launcher is
+`scripts/validate_cpu_smoke.py --runtime-config ... --output ...`.
+
+`renderer.threads` configures each Blender scene's render threads. The separate
+`--process-threads` developer-preview option configures Blender's startup thread
+argument and the OpenMP, OpenBLAS, and vecLib environment settings. The CPU smoke
+fixture explicitly selects two for both. These are library/renderer settings,
+not an operating-system CPU quota. Persistent local/Apptainer workers read
+`process_threads` from runtime configuration when constructed; restart the worker
+service to change it. Render requests never reconfigure a warm process's
+numerical libraries. Omitted process settings preserve the launch environment.

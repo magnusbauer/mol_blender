@@ -34,6 +34,19 @@ transport retries. Keys and job history are internal details, not user tasks.
   download links or repeatedly retrieve a hidden image. Do not rerender to fix a hidden preview. Native file import may
   require ChatGPT permission; do not claim durable storage from a preview alone.
 
+For a requested native PNG attachment or save to Space, call `get_render_png_file`
+for the completed HTTP job. Use the host's native file importer or code runtime to
+fetch `file.source_url`, save its unchanged bytes under `file.file_name`, and
+verify `file.size_bytes` and `file.sha256`. Return the verified file as a native
+image/file artifact using the host's real artifact reference. Do not invent a
+`sandbox:` link before creating the file. This explicitly requested native
+attachment is allowed; the temporary source URL is not a saved file link.
+Do not redraw, re-encode, use widget `uploadFile`, or rerender. If the host lacks
+an importer or network-capable runtime, explain the limitation and stop. A
+native attachment still does not prove Space persistence: check that the exact
+filename appears in Space and can be attached in a fresh chat with the original
+source unavailable. Do not claim automatic Space saving until that check passes.
+
 Use `list_presets` only to resolve an unknown style or genuine ambiguity. For
 reference matching, pass structured visual observations, not reference images,
 URLs or prose in schema fields. Requested scientific/style changes must be made

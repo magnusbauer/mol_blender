@@ -15,6 +15,7 @@ dependencies = ["jsonschema>=4.23,<5", "pillow>=11,<13"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8,<10", "numpy==1.26.4", "httpx==0.28.1", "pillow>=11,<13", "build>=1.2,<2"]
+browser = ["pytest>=8,<10", "playwright==1.63.0"]
 server = ["fastapi==0.141.1", "uvicorn==0.52.4", "httpx==0.28.1", "gemmi==0.7.5"]
 mcp = ["fastmcp==2.14.7", "fastapi==0.141.1", "uvicorn==0.52.4", "pillow>=11,<13", "gemmi==0.7.5"]
 modal = ["modal==1.5.5", "fastmcp==2.14.7", "fastapi==0.141.1", "uvicorn==0.52.4", "pillow>=11,<13", "gemmi==0.7.5"]

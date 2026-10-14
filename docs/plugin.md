@@ -74,6 +74,20 @@ consume files after transfer. ChatGPT controls its own storage and may request a
 attachment-import confirmation. Permanent ChatGPT retention is not guaranteed by
 an MCP response or by displaying a preview.
 
+For an explicitly requested native PNG/Space handoff, HTTP additionally exposes
+`get_render_png_file(job_id)`. It has no app UI binding and returns a temporary
+resource link plus the original filename, byte size, SHA-256 and expiry. It uses
+the same owned, checksum-verified artifact and non-consuming download route;
+it cannot create a job. The assistant must use the host's native file importer
+or a runtime with network access to copy and verify those bytes, then return the
+actual native artifact. The temporary URL is transfer data, not the saved file.
+No widget upload or permanent application storage is added. Missing host runtime
+or network support is a visible limitation, not permission to simulate success.
+`file_import_confirmed` and `space_save_confirmed` remain false in the MCP result;
+only subsequent host actions and the live Space test can establish those stages.
+Verify native import and saved-file reuse in the actual host with the original
+source unavailable; local protocol tests do not establish those stages.
+
 The native preview is at most 1024 pixels on its longest edge and 384 KiB; the
 attached PNG retains the rendered resolution and transparency. A preview failure
 returns `presentation_status="file_handoff"` and `presentation_failed` while
@@ -127,15 +141,20 @@ The MCP server carries the workflow instructions for direct developer connection
 Updating a repository SKILL.md alone does not update such a connection. Packaged
 plugins carry the corresponding skill; refresh tool metadata after deployment.
 
-The viewer automatically attempts to save every available output (PNG, GIF, MP4, Blender scene, manifest and frame archive) when ChatGPT exposes file upload
-and widget-state APIs. Wait for the per-format **saved in ChatGPT** confirmation. Failed attempts expose
-**Retry saving files**; repeated notifications do not upload duplicates. Each successfully uploaded file gets its own host file ID for later access.
-The viewer saves those IDs in widget state, requests file-library storage when
-available, and restores download controls from state even without the original
-tool metadata. Saved images use fresh host URLs instead of expired server URLs.
-A failed state write can be retried without repeating a successful upload.
-Uploads over the viewer’s 64 MiB limit or formats rejected by ChatGPT remain
-explicitly unsaved and available through the temporary download controls.
-This does not guarantee permanent retention; ChatGPT may reject a file format. If saving fails or the
-host lacks the API, use the download controls. Actual host storage must be verified
-in ChatGPT; browser tests use a simulated upload API.
+The viewer offers **Save files to Library** for generated outputs. Uploads are
+user initiated and request ChatGPT Library storage when available. Upload receipt
+and widget-state updates alone do not establish later Library availability.
+Failures expose **Retry saving files** without repeating successful uploads.
+
+For a saved PNG or JPEG, call `open_saved_image` and click **Use saved image**.
+The user selects a Library file; the viewer obtains a fresh ChatGPT download URL,
+retrieves its pixels, and provides them to the model through the image-context
+bridge and an explicit **Ask ChatGPT about this image** action. This path does not
+require the original render artifact. Raw file IDs are preserved in structured
+widget state (`modelContent`, `privateContent`, and image-only `imageIds`).
+Library selection is optional host functionality; an unavailable helper or failed
+retrieval is reported explicitly. GIF, MP4, Blender scene, manifest and ZIP files
+retain saving/download controls but are not part of the PNG/JPEG model-reuse path.
+The 64 MiB upload limit still applies. Verify Library reuse in a fresh chat after
+all original diagnostic image tools are disabled. Diagnostic commands are in the
+[developer workflow](developer-workflow.md#image-delivery-diagnostics).

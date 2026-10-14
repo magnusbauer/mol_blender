@@ -6,5 +6,9 @@ recursive-include examples *.cif *.json *.png *.pse *.py
 recursive-include plugins *.json *.md *.svg *.png
 include .agents/plugins/marketplace.json
 recursive-include scripts *.py
+include tests/conftest.py
+recursive-include tests/browser *.py
+recursive-include tests/support *.py
+recursive-include tests/integration *.py
 global-exclude *.pyc
 global-exclude __pycache__
