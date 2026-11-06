@@ -10,7 +10,7 @@
   },
   "renderer": {
     "engine": "CYCLES",
-    "device": "CPU",
+    "device": "GPU",
     "compute_device_type": "AUTO",
     "transparent_background": false,
     "view_transform": "Standard",
