@@ -37,9 +37,11 @@ class Dispatcher:
         with self.lock:
             if action == 'status':
                 session = warm_worker.status()
+                if session['status'] not in ('ready', 'busy'):
+                    self.stopping.set()
                 return {'status': 'stopping' if self.stopping.is_set() else 'busy' if self.active else 'ready',
                         'job_id': self.active, 'warm_worker': {name: session.get(name) for name in
-                                                           ('id', 'pid', 'blender_pid', 'completed')}}
+                                                           ('id', 'pid', 'blender_pid', 'completed', 'status')}}
             identifier = job_id(message['job_id'])
             directory = self.spool / identifier
             if directory.is_symlink() or not directory.is_dir() or not (directory / 'job.json').is_file():

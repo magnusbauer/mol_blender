@@ -61,7 +61,7 @@ class Warm(Workstation):
         with self.locked():
             return self._start()
 
-    def _start(self):
+    def _start(self, *, require_idle=False):
         deadline = time.monotonic() + 220
         launched = False
         while time.monotonic() < deadline:
@@ -79,7 +79,7 @@ class Warm(Workstation):
                 self.run(self.service_command(self.root, self.service, command, walltime='infinity'))
                 launched = True
             state = self.status()
-            if state['status'] in ('ready', 'busy'):
+            if state['status'] == 'ready' or state['status'] == 'busy' and not require_idle:
                 return state
             if state['status'] == 'stopped' and launched:
                 raise OSError('Warm service exited during startup; inspect .warm/worker.log')
@@ -102,7 +102,10 @@ class Warm(Workstation):
             raise ValueError('Warm jobs must be in the configured spool')
         with self.locked():
             try:
-                self._start()
+                # Store has already checked the previous result and the one-job
+                # quota. Allow its dispatch thread to finish retiring/releasing
+                # the worker before sending this new job's acceptance message.
+                self._start(require_idle=True)
             except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
                 # No submit message has been sent, so no render can have started.
                 raise OSError('Warm service could not start: ' + str(exc)) from exc

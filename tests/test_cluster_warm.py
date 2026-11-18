@@ -2,6 +2,8 @@
 from dataclasses import replace
 import hashlib
 import json
+import subprocess
+import sys
 import threading
 
 import pytest
@@ -32,7 +34,7 @@ def backend(warm_config, monkeypatch):
     release = threading.Event()
     calls = []
     monkeypatch.setattr(warm_service.warm_worker, 'start', lambda **kw: {'id': 'same-worker'})
-    monkeypatch.setattr(warm_service.warm_worker, 'status', lambda: {'id': 'same-worker', 'pid': 42})
+    monkeypatch.setattr(warm_service.warm_worker, 'status', lambda: {'id': 'same-worker', 'pid': 42, 'status': 'ready'})
 
     def render(payload, **kwargs):
         calls.append(kwargs)
@@ -43,7 +45,7 @@ def backend(warm_config, monkeypatch):
         return {'outputs': {'render.png': str(path)}}
 
     monkeypatch.setattr(local, 'render_payload', render)
-    monkeypatch.setattr(scheduler, '_start', lambda: dispatcher.handle({'id': scheduler.key, 'action': 'status'}))
+    monkeypatch.setattr(scheduler, '_start', lambda **kw: dispatcher.handle({'id': scheduler.key, 'action': 'status'}))
     monkeypatch.setattr(scheduler, 'rpc', lambda action, **kw:
                         dispatcher.handle({'id': scheduler.key, 'action': action, **kw}))
     monkeypatch.setattr(scheduler, 'unit_properties', lambda unit: {'LoadState': 'loaded', 'ActiveState': 'active'})
@@ -204,3 +206,41 @@ def test_warm_policy_and_cli_validation(warm_config, tmp_path):
     args = cli.parser().parse_args(['warm', 'status', '--force', '--config', str(path)])
     with pytest.raises(ValueError, match='only to warm stop'):
         cli.execute(args)
+
+
+def test_next_submission_waits_for_completed_dispatch_to_release_worker(warm_config, monkeypatch):
+    scheduler = Warm(warm_config)
+    states = iter([{'status': 'busy', 'job_id': 'a' * 32}, {'status': 'ready'}])
+    observations = []
+    def status():
+        state = next(states)
+        observations.append(state['status'])
+        return state
+    monkeypatch.setattr(scheduler, 'unit_properties', lambda unit: {'LoadState': 'loaded'})
+    monkeypatch.setattr(scheduler, 'status', status)
+    monkeypatch.setattr(scheduler, 'rpc', lambda action, **kw: observations.append(action))
+    monkeypatch.setattr('blender_render.cluster.warm.time.sleep', lambda delay: None)
+    scheduler.submit(warm_config.spool / ('b' * 32), 'b' * 32)
+    assert observations == ['busy', 'ready', 'submit']
+
+
+def test_dead_blender_retires_service_instead_of_advertising_ready(tmp_path, monkeypatch):
+    monkeypatch.setattr(warm_service.warm_worker, 'status', lambda: {'status': 'stopped'})
+    dispatcher = warm_service.Dispatcher(tmp_path, 'key', 90)
+    assert dispatcher.handle({'id': 'key', 'action': 'status'})['status'] == 'stopping'
+    assert dispatcher.stopping.is_set()
+
+
+def test_watchdog_exits_even_when_render_thread_hangs():
+    # Actual process exit, without starting Blender or leaving any children.
+    script = '''
+from pathlib import Path
+import threading
+from blender_render.cluster import warm_service as service
+service.warm_worker.start = lambda **kw: None
+service.worker.run = lambda *args, **kw: threading.Event().wait(20)
+dispatcher = service.Dispatcher(Path('.'), 'key', .1)
+dispatcher.render(Path('.'), threading.Event())
+'''
+    result = subprocess.run([sys.executable, '-c', script], timeout=5, capture_output=True)
+    assert result.returncode == 124, result.stderr.decode()
