@@ -15,6 +15,9 @@ class SubmissionUnknown(RuntimeError):
 
 
 def scheduler_for(config):
+    if config.scheduler == 'warm':
+        from .warm import Warm
+        return Warm(config)
     if config.scheduler == 'workstation':
         from .workstation import Workstation
         return Workstation(config)
@@ -54,7 +57,7 @@ class Slurm:
         directories = [os.path.dirname(getattr(self.config, name)) for name in self.config.executables]
         return ':'.join(dict.fromkeys(directories + ['/usr/bin', '/bin']))
 
-    def container_command(self, directory):
+    def container_command(self, directory, *, module='blender_render.cluster.worker'):
         c = self.config
         command = [c.apptainer, 'exec', '--cleanenv', '--containall', '--no-home',
                    '--no-mount', 'hostfs,bind-paths,cwd', '--bind', f'{directory}:/job',
@@ -67,7 +70,7 @@ class Slurm:
                             '--env', 'STRUCTURE_STUDIO_HOME=' + runtime,
                             '--env', 'BLENDER_RENDER_HOME=' + runtime + '/blender-render'])
         command.extend([str(c.image), runtime + '/render/bin/python', '-I',
-                        '-m', 'blender_render.cluster.worker'])
+                        '-m', module])
         return command
 
     def script(self, directory):

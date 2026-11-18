@@ -41,7 +41,18 @@ class Workstation(Slurm):
         return value
 
     def submit(self, directory, identifier):
-        c, unit = self.config, self.unit(identifier)
+        unit = self.unit(identifier)
+        command = self.service_command(directory, unit, self.container_command(directory) + ['/job'],
+                                       walltime=self.config.walltime_seconds)
+        try:
+            self.run(command)
+        except (subprocess.TimeoutExpired, subprocess.CalledProcessError) as exc:
+            # Even a nonzero response can follow an accepted D-Bus start request.
+            raise SubmissionUnknown('Workstation launch was not confirmed; reconcile the existing job') from exc
+        return unit
+
+    def service_command(self, directory, unit, executable, *, walltime):
+        c = self.config
         env = self.environment()
         env.update(APPTAINERENV_OMP_NUM_THREADS=str(c.cpus), APPTAINERENV_OPENBLAS_NUM_THREADS=str(c.cpus))
         if c.gpus:
@@ -52,23 +63,21 @@ class Workstation(Slurm):
                    '--expand-environment=no', '--unit=' + unit,
                    '--property=Restart=no', '--property=KillMode=control-group',
                    '--property=TimeoutStopSec=10s', '--property=UMask=0077',
-                   '--property=RuntimeMaxSec=' + str(c.walltime_seconds),
+                   '--property=RuntimeMaxSec=' + str(walltime),
                    '--property=MemoryMax=' + str(c.memory_mb) + 'M',
                    '--property=CPUQuota=' + str(c.cpus * 100) + '%',
                    '--property=WorkingDirectory=' + str(directory),
                    '--property=StandardOutput=append:' + str(directory / 'worker.log'),
                    '--property=StandardError=inherit', '/usr/bin/env', '-i',
                    *[key + '=' + value for key, value in env.items()],
-                   *self.container_command(directory), '/job']
-        try:
-            self.run(command)
-        except (subprocess.TimeoutExpired, subprocess.CalledProcessError) as exc:
-            # Even a nonzero response can follow an accepted D-Bus start request.
-            raise SubmissionUnknown('Workstation launch was not confirmed; reconcile the existing job') from exc
-        return unit
+                   *executable]
+        return command
 
     def properties(self, identifier):
-        command = [self.config.systemctl, '--user', 'show', self.checked_id(identifier),
+        return self.unit_properties(self.checked_id(identifier))
+
+    def unit_properties(self, unit):
+        command = [self.config.systemctl, '--user', 'show', unit,
                    '--property=LoadState,ActiveState,SubState,Result']
         try:
             output = self.run(command).stdout

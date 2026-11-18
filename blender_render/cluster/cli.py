@@ -28,6 +28,10 @@ def parser():
     revoke.add_argument('--user', required=True)
     doctor = commands.add_parser('doctor', help='Check the SIF, container runtime and selected scheduler without installing, queuing or rendering')
     doctor.add_argument('--config', required=True)
+    warm = commands.add_parser('warm', help='Start, inspect or stop a persistent warm gateway worker')
+    warm.add_argument('action', choices=('start', 'status', 'stop'))
+    warm.add_argument('--config', required=True)
+    warm.add_argument('--force', action='store_true', help='Stop even during a render (retires the container)')
     reconcile = commands.add_parser('reconcile', help='Recover an ambiguous submission without launching another job')
     reconcile.add_argument('--config', required=True)
     reconcile.add_argument('job')
@@ -86,9 +90,17 @@ def execute(args):
         return connect.connect(args.profile, reissue=args.reissue, **{key: getattr(args, key) for key in connect.SETTINGS})
     if args.command == 'configure':
         return configure(args.profile, args.credential_file, args.ca_file, url=args.url)
-    if args.command in ('serve', 'user-add', 'user-revoke', 'doctor', 'reconcile'):
+    if args.command in ('serve', 'user-add', 'user-revoke', 'doctor', 'reconcile', 'warm'):
         from .config import ServerConfig
         config = ServerConfig.load(args.config)
+        if args.command == 'warm':
+            if config.scheduler != 'warm':
+                raise ValueError('cluster warm requires scheduler: warm in the server configuration')
+            if args.force and args.action != 'stop':
+                raise ValueError('--force applies only to warm stop')
+            from .warm import Warm
+            scheduler = Warm(config)
+            return scheduler.stop(force=args.force) if args.action == 'stop' else getattr(scheduler, args.action)()
         if args.command in ('user-add', 'user-revoke') and config.authentication != 'token':
             raise ValueError('User credentials are disabled in open cluster mode')
         if args.command in ('doctor', 'reconcile'):

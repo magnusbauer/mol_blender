@@ -31,7 +31,8 @@ For a Linux desktop GPU without Slurm, see [GPU workstation over SSH](#gpu-works
 
 ## GPU use and warm starts
 
-The gateway stays running between submissions. Each submitted render gets its own
+The gateway stays running between submissions. With the default Slurm scheduler,
+each submitted render gets its own
 Slurm job, Apptainer invocation and fresh Blender process. When the job finishes,
 its GPU allocation ends. The image and pinned uv environments are reused on disk;
 Blender and its GPU context are not retained between jobs. Increasing a job's
@@ -43,6 +44,7 @@ walltime does not keep a completed worker running.
 | Optional warm local rendering | The same local computer and configured runtime | One process reused until stopped or its idle limit expires |
 | Shared cluster rendering | A Slurm compute node inside Apptainer | A fresh process for each submitted job |
 | Workstation gateway | The Linux gateway host's selected GPU inside Apptainer | A fresh process for each submitted job |
+| Warm HTTP gateway | The Linux gateway host inside one persistent Apptainer container | One Blender process reused across successful jobs until stopped |
 
 Local GPU rendering remains available without a server. After configuring the
 local runtime as described in the [README](../README.md#install-and-configure),
@@ -73,10 +75,76 @@ The existing warm worker can stay running on a configured server with
 `blender-render render ... --warm` calls reuse it. Start and render must use the
 same configuration and, for Apptainer, the same container session; see
 [the warm worker guide](local-worker.md#inside-apptainer-on-linux).
-This is distinct from the current forwarded gateway: both its Slurm and
-workstation schedulers still start a fresh Blender process for each request.
-Keeping the gateway or SSH tunnel open does not yet give `cluster=lab` warm
-Blender reuse.
+The Slurm and workstation schedulers still start fresh Blender for each request.
+For process reuse through HTTP and `cluster=lab`, the administrator selects the
+[warm gateway backend](#warm-http-gateway).
+
+## Warm HTTP gateway
+
+Set `"scheduler": "warm"` in a copy of
+[workstation-server.json](../examples/workstation-server.json). Choose a **new
+private spool**, a pinned SIF and matching controller built from this revision.
+Keep `limits.max_active_total` at `1` and `limits.render_timeout` at least `30`.
+The Linux, systemd user manager, Apptainer, CUDA device selection and CPU/memory
+requirements are the same as for the [workstation backend](#gpu-workstation-over-ssh).
+Use `gpus: 0` for CPU or `gpus: 1` with the administrator's `gpu_index` for CUDA.
+This backend runs on the gateway host; it does not acquire a Slurm allocation.
+
+On the server, using the controller environment:
+
+```sh
+blender-render cluster doctor --config /srv/blender-render/warm/server.json
+blender-render cluster warm start --config /srv/blender-render/warm/server.json
+blender-render cluster warm status --config /srv/blender-render/warm/server.json
+blender-render cluster serve --config /srv/blender-render/warm/server.json
+```
+
+`warm start` is optional: the first accepted job starts the service if needed.
+Explicit startup pays Blender's import cost before accepting HTTP work. The
+first render may still initialize CUDA kernels. A single systemd user service
+keeps the container and private warm Blender worker alive without an idle
+timeout. Subsequent successful jobs rebuild their scenes in that process;
+images are never returned from a result cache. Render manifests record
+`warm_worker.id`, `pid`, `request_index`, and `reused_process` to verify reuse.
+
+Use the existing authenticated HTTP endpoint, credentials and job operations.
+`GET /v1/info` reports `scheduler: "warm"`; request schemas are unchanged. The
+existing SSH `cluster connect` command also accepts this server configuration.
+It creates a per-connection spool, so its warm service is separate from the
+base configuration's service. To prestart, inspect or stop that worker on the
+server, pass the connection directory's generated `server.json` to `cluster warm`.
+In PyMOL the command remains:
+
+```pymol
+blender_render cluster=lab
+```
+
+Repeat it for another preview. Omit the local `warm=1` flag: the server chooses
+the execution backend. Existing receipts, upload recovery, status, cancellation
+and verified artifact downloads work as before. A second concurrent job gets
+the existing quota response; there is no additional queue.
+
+The worker survives an HTTP gateway restart or SSH tunnel disconnect. CPU and
+memory limits apply to its whole process tree, including while idle. Each job
+has its normal render timeout plus an independent service watchdog bounded by
+`walltime_seconds`. A render failure retires the container. Cancelling an active
+job stops the whole systemd service and GPU process; the next **new** request
+starts a fresh worker. Interrupted or ambiguous requests are never rerendered
+automatically. Use the existing administrator `cluster reconcile` command after
+an ambiguous acceptance; it recovers the same job's `started.json` or result.
+
+Stop the idle worker to release GPU memory:
+
+```sh
+blender-render cluster warm stop --config /srv/blender-render/warm/server.json
+```
+
+Stopping a busy worker requires `--force`, and makes its interrupted job fail.
+Use the normal job cancellation API when you want a cancelled job status. Stop
+before replacing the image, controller, runtime or resource policy; a live
+worker with different source/configuration is rejected. Private diagnostics are
+in the spool's `.warm/worker.log` and each job's `worker-error.log`. Service
+scratch is private and removed on graceful shutdown or the next service start.
 
 ## Use from PyMOL
 

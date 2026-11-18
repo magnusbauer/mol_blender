@@ -88,7 +88,10 @@ presents already-authorized outputs; keep service queues and remote execution ou
 of the renderer. Import hosted dependencies only when explicitly selected.
 The optional `blender_render.cluster` service owns authentication, the private job
 spool and Apptainer submission through Slurm or the explicit Linux workstation
-scheduler (systemd user units). Workers call the same `local.py` renderer.
+scheduler (systemd user units), or the explicit `warm` scheduler's persistent
+container. Workers call the same `local.py` renderer. The warm HTTP backend uses
+the existing spool and `cluster.worker`, one active request at a time; keep its
+private control socket data-only and retire the entire service on cancellation.
 Keep local rendering the default; never accept executable session uploads or
 client-supplied paths/commands on the cluster API. Reuse uv runtimes built from
 the shared pins; Linux environments must stay at their original absolute paths.
