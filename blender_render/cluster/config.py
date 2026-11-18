@@ -67,11 +67,11 @@ class ServerConfig:
 
     @property
     def executables(self):
-        return self.WORKSTATION_EXECUTABLES if self.scheduler == 'workstation' else self.EXECUTABLES
+        return self.WORKSTATION_EXECUTABLES if self.scheduler != 'slurm' else self.EXECUTABLES
 
     @property
     def execution_id_key(self):
-        return 'worker_id' if self.scheduler == 'workstation' else 'slurm_id'
+        return 'worker_id' if self.scheduler != 'slurm' else 'slurm_id'
 
     @property
     def runtime_root(self):
@@ -92,8 +92,8 @@ class ServerConfig:
                 raise ValueError(name + ' must be a path string')
         if self.authentication not in ('token', 'none'):
             raise ValueError('authentication must be token or none')
-        if self.scheduler not in ('slurm', 'workstation'):
-            raise ValueError('scheduler must be slurm or workstation')
+        if self.scheduler not in ('slurm', 'workstation', 'warm'):
+            raise ValueError('scheduler must be slurm, workstation or warm')
         if self.authentication == 'token' and self.tokens_file is None:
             raise ValueError('Token authentication requires tokens_file')
         # Commas and colons would split Apptainer --bind specifications.
@@ -135,9 +135,11 @@ class ServerConfig:
             raise ValueError('Invalid Slurm constraint; use feature names joined by & or |')
         if self.walltime_seconds < self.limits.render_timeout + 60:
             raise ValueError('Execution walltime must exceed render_timeout by at least 60 seconds')
-        if self.scheduler == 'workstation':
+        if self.scheduler in ('workstation', 'warm'):
             if self.limits.max_active_total != 1:
                 raise ValueError('Workstation limits.max_active_total must be 1')
+            if self.scheduler == 'warm' and self.limits.render_timeout < 30:
+                raise ValueError('Warm render_timeout must be at least 30 seconds')
             if any((self.partition, self.account, self.qos, self.constraint, self.gpu_type)) or self.gpu_request != 'gres':
                 raise ValueError('Slurm resource selectors cannot be used with the workstation scheduler')
             # systemd expands percent specifiers even in otherwise literal paths.

@@ -34,7 +34,7 @@ def job_scratch(directory):
                 os.environ['TMPDIR'] = previous_env
 
 
-def run(directory):
+def run(directory, *, warm=False, accepted=None):
     from ..engine import generate_manifest
     from ..local import render_payload
     directory = Path(directory).resolve()
@@ -58,9 +58,12 @@ def run(directory):
             if (directory / 'started.json').exists():
                 raise RuntimeError('Previous execution was interrupted; no automatic rerender')
             atomic_json(directory / 'started.json', {'started_at': time.time(), 'engine_build': identity})
+            if accepted:
+                accepted.set()
             with job_scratch(directory):
                 result = render_payload(request['payload'], output=directory / 'out/render.png',
-                                        options={'style_doc': request['style']}, timeout=limits.render_timeout)
+                                        options={'style_doc': request['style']}, timeout=limits.render_timeout,
+                                        **({'warm': True} if warm else {}))
             artifacts = {}
             for name, filename in result['outputs'].items():
                 path = Path(filename).resolve()

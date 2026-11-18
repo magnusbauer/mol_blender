@@ -69,6 +69,6 @@ def run(config, scheduler, identity):
     return {**check, 'status': 'configured', 'image_sha256': config.image_sha256,
             'runtime': config.runtime_root,
             'apptainer': runtime, 'scheduler': config.scheduler,
-            ('workstation_check' if config.scheduler == 'workstation' else 'slurm_dry_run'): dry_run,
+            ('slurm_dry_run' if config.scheduler == 'slurm' else 'workstation_check'): dry_run,
             'warnings': warnings,
             'render_verified': False}

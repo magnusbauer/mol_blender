@@ -249,6 +249,9 @@ For a Linux GPU workstation, use the same client through
 [SSH forwarding](docs/shared-cluster.md#gpu-workstation-over-ssh). A workstation
 profile runs Apptainer on that host's GPU; the default Slurm profile submits to
 the cluster. Both support repeated unnamed PyMOL previews.
+An administrator can also select the [warm HTTP backend](docs/shared-cluster.md#warm-http-gateway)
+to keep Blender running between requests on that host. The client command stays
+the same for all three backends.
 Then explicitly select the profile in PyMOL:
 
 ```pymol
@@ -296,6 +299,7 @@ inspect or stop it. CLI rendering accepts `--warm`; see the
 [warm local worker guide](docs/local-worker.md) for configuration, lifecycle and
 Apptainer usage. Each Slurm render request still gets a separate job; an animation
 keeps its frames within that job. Choose either `warm=1` or `cluster=lab`.
+Remote process reuse is selected by the server's `scheduler: "warm"` setting.
 Legacy service/profile/remote arguments are unsupported.
 
 ## PyMOL agent (co_pymol)
