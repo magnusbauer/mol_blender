@@ -32,9 +32,10 @@ local Blender process. Use `cluster=lab` for a remote gateway; combining a clust
 with `warm=1` is rejected before exporting or submitting anything.
 
 The worker runs on the controller's computer, under the same user and
-configuration. This can be a server when these commands are run there. A cluster
-profile does not yet send warm requests to it: the gateway's Slurm and workstation
-schedulers both start a fresh Blender process for each remote request.
+configuration. This can be a server when these commands are run there. To reuse
+Blender through a cluster profile and HTTP, configure the separate
+[warm gateway backend](shared-cluster.md#warm-http-gateway). The Slurm and
+workstation schedulers still start fresh Blender for each remote request.
 
 ## From the command line
 
@@ -130,4 +131,5 @@ runtime through a read-only bind at its original absolute path is also supported
 keep the worker's configuration, socket and temporary files on writable storage.
 For a long-lived server session, use `worker start --idle-timeout 0` and keep that
 container session running. The warm worker then stays available until explicitly
-stopped. This alone does not connect it to the forwarded gateway API.
+stopped. For the forwarded HTTP job API, use the warm gateway backend instead;
+it owns its container and worker lifecycle.

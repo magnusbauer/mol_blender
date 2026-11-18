@@ -36,7 +36,7 @@ and specify your client and workflow.
 - [Runtime environments](runtime-environments.md): separate PyMOL and Blender
   environments, pinned dependencies and Linux/Apptainer builds.
 - [Shared cluster rendering](shared-cluster.md): connect to an existing service,
-  recover jobs, or configure and operate a Slurm gateway.
+  recover jobs, or operate a Slurm, workstation or warm HTTP gateway.
 
 ## Developer reference and release information
 
