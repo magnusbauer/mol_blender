@@ -11,6 +11,7 @@ include docs/animation.md docs/reference-presets.md
 include docs/blender-editing.md docs/chat-editing.md
 include docs/local-worker.md docs/runtime-environments.md docs/shared-cluster.md
 include docs/hosted-adapter.md
+include docs/chimerax.md
 include docs/dependency-source-manifest.json
 prune .validation
 recursive-include examples *.cif *.json *.png *.pse *.py

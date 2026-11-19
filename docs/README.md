@@ -12,6 +12,8 @@ is the default; a shared cluster is optional.
   runtime.
 - [Install the renderer CLI and PyMOL bridge](../README.md#install-and-configure):
   configure the renderer directly and make a first local image.
+- [Render from ChimeraX](chimerax.md): export the current ChimeraX scene and
+  render it with the same renderer.
 
 An agent can follow these guides too. Give it this repository and the
 [installation instructions in AGENTS.md](../AGENTS.md#installation-requests),
