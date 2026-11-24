@@ -19,7 +19,7 @@ def export_file(path, *, python="", selection="(all)"):
         env = os.environ.copy()
         env['PYTHONPATH'] = str(captured.parent) + os.pathsep + env.get('PYTHONPATH', '')
         protect('conversion')
-        result = subprocess.run([executable, str(captured/'scene/export.py'), str(Path(path).expanduser().resolve()), str(destination), "--selection", selection],
+        result = subprocess.run([executable, '-X', 'utf8', str(captured/'scene/export.py'), str(Path(path).expanduser().resolve()), str(destination), "--selection", selection],
                                 cwd=captured.parent, env=env, capture_output=True, text=True, timeout=120)
         if result.returncode:
             raise RuntimeError("PyMOL export failed. Configure --pymol-python with an interpreter containing pymol2.\n" + result.stderr[-3000:])

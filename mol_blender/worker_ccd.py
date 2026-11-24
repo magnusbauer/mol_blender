@@ -18,6 +18,10 @@ _active = None
 
 
 def _read_regular(path):
+    if os.name == 'nt':
+        from .platform_support import open_regular_windows
+        with open_regular_windows(path) as stream:
+            return stream.read()
     if not hasattr(os, 'O_NOFOLLOW'):
         raise OSError('CCD capture requires O_NOFOLLOW')
     descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
@@ -46,12 +50,16 @@ class WorkerCCD:
             reason = 'ccd_missing'
             self.directory = tempfile.TemporaryDirectory(prefix='worker-ccd-', dir=parent)
             self.path = Path(self.directory.name)/'components.bcif'
-            descriptor = os.open(self.path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+            descriptor = os.open(self.path, os.O_WRONLY | os.O_CREAT | os.O_EXCL |
+                                 getattr(os, 'O_NOFOLLOW', 0) | getattr(os, 'O_BINARY', 0), 0o600)
             with os.fdopen(descriptor, 'wb') as stream:
                 stream.write(data)
                 stream.flush()
                 os.fsync(stream.fileno())
-                os.fchmod(stream.fileno(), 0o400)
+                if os.name != 'nt':
+                    os.fchmod(stream.fileno(), 0o400)
+            if os.name == 'nt':
+                self.path.chmod(0o400)
             # The pinned Biotite setter also clears its dependent CCD caches.
             # A setter exception is failure even if it changed _CCD_FILE first.
             reason = 'ccd_activation_failed'

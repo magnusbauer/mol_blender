@@ -7,6 +7,11 @@
   "biotite": "1.6.0",
   "ccd_sha256": "dffdb3a19600d51854058daecfbc9bd1b94aab413a04e7afed8d4b7670621d47",
   "downloads": {
+    "windows-x64": {
+      "filename": "blender-5.0.1-windows-x64.zip",
+      "url": "https://download.blender.org/release/Blender5.0/blender-5.0.1-windows-x64.zip",
+      "sha256": "921d77f6c505a35b2c2f6e67d4ad1c10b72418338ba0e0d3ea7f582a5e5fe46e"
+    },
     "macos-arm64": {
       "filename": "blender-5.0.1-macos-arm64.dmg",
       "url": "https://download.blender.org/release/Blender5.0/blender-5.0.1-macos-arm64.dmg",

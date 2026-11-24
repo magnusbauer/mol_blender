@@ -37,6 +37,10 @@ advanced setup and developer reference.
 
 ## Install and configure
 
+Windows x64 users can follow the [native Windows local-rendering guide](docs/install-windows.md)
+for an isolated runtime and reversible PyMOL startup integration. Windows support
+currently covers synchronous local rendering, not co-PyMOL background jobs or editor IPC.
+
 Want your AI agent to handle installation? Give it this repository and ask it to
 follow [the setup instructions in AGENTS.md](AGENTS.md#installation-requests).
 Tell it whether you want [co-PyMOL](docs/install-co-pymol.md) to control a live

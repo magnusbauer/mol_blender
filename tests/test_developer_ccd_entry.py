@@ -3,6 +3,8 @@ import hashlib
 import importlib
 import importlib.metadata
 import json
+import os
+import stat
 from pathlib import Path
 import runpy
 import sys
@@ -55,7 +57,11 @@ def test_developer_entry_owns_ccd_through_render_and_evidence(tmp_path, monkeypa
         def activate(path):
             path = Path(path)
             assert path != original and path != private and path.is_relative_to(root)
-            assert path.read_bytes() == data and path.stat().st_mode & 0o777 == 0o400
+            assert path.read_bytes() == data
+            if os.name == 'nt':
+                assert not path.stat().st_mode & stat.S_IWRITE
+            else:
+                assert path.stat().st_mode & 0o777 == 0o400
             captured.append(path)
             ccd._CCD_FILE = path
             events.append('activate')

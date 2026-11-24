@@ -7,6 +7,9 @@ recursive-include LICENSES *.txt
 # Ship only the public documentation listed here, never draft/private notes.
 include docs/README.md
 include docs/install-co-pymol.md docs/install-claude.md docs/co-pymol/README.md
+include docs/install-windows.md
+include docs/windows-git-guide-zh.md
+include docs/windows-validation.md
 include docs/animation.md docs/reference-presets.md
 include docs/blender-editing.md docs/chat-editing.md
 include docs/local-worker.md docs/runtime-environments.md docs/shared-cluster.md
@@ -17,5 +20,6 @@ recursive-include examples *.cif *.json *.png *.pse *.py
 recursive-include .agents/skills *.md
 recursive-include .claude/skills *.md
 recursive-include scripts *.py
+include scripts/install-windows.ps1
 global-exclude *.pyc
 global-exclude __pycache__

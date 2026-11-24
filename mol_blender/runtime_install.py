@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import zipfile
 from pathlib import Path
 
 from .config import config_root, runtime_versions
@@ -36,9 +37,11 @@ def install(blender="", root=None):
     root.mkdir(mode=0o700, parents=True, exist_ok=True)
     lock = runtime_versions()
     if not blender:
-        target = "macos-arm64" if sys.platform == "darwin" and platform.machine() == "arm64" else "linux-x64" if sys.platform == "linux" and platform.machine() == "x86_64" else ""
+        target = ("windows-x64" if sys.platform == "win32" and platform.machine().lower() in {'amd64', 'x86_64'} else
+                  "macos-arm64" if sys.platform == "darwin" and platform.machine() == "arm64" else
+                  "linux-x64" if sys.platform == "linux" and platform.machine() == "x86_64" else "")
         if not target:
-            raise RuntimeError("Managed local runtime supports Apple Silicon Mac and Linux x86_64. Configure an existing compatible local runtime on other platforms.")
+            raise RuntimeError("Managed runtime supports Windows x64, Apple Silicon Mac and Linux x86_64.")
         artifact = lock["downloads"][target]
         with tempfile.TemporaryDirectory(prefix="blender-install-") as temporary:
             archive = Path(temporary) / artifact["filename"]
@@ -54,6 +57,13 @@ def install(blender="", root=None):
                 finally:
                     subprocess.run(["hdiutil", "detach", mount], check=True)
                 blender = str(destination / "Contents/MacOS/Blender")
+            elif target == 'windows-x64':
+                with zipfile.ZipFile(archive) as source:
+                    for member in source.infolist():
+                        if not (root/member.filename).resolve().is_relative_to(root.resolve()):
+                            raise ValueError('Invalid Blender archive path')
+                    source.extractall(root)
+                blender = str(root / 'blender-5.0.1-windows-x64/blender.exe')
             else:
                 with tarfile.open(archive) as source:
                     source.extractall(root, filter="data")
@@ -65,5 +75,6 @@ def install(blender="", root=None):
     env = os.environ.copy()
     env["PYTHONPATH"] = str(site)
     env["MOL_BLENDER_CCD_SHA256"] = lock["ccd_sha256"]
+    env['MPLCONFIGDIR'] = str(root/'matplotlib')
     subprocess.run([blender, "--background", "--python-use-system-env", "--python-exit-code", "1", "--python", str(Path(__file__).with_name("runtime_initialize.py"))], env=env, check=True)
     return {"blender": blender, "runtime_site": str(site)}

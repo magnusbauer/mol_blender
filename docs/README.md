@@ -5,6 +5,9 @@ is the default; a shared cluster is optional.
 
 ## Get started
 
+- [Windows native local rendering](install-windows.md): PyMOL command, isolated runtime and reversible startup integration.
+- [Windows validation scope](windows-validation.md) and [Fork/PR walkthrough in Chinese](windows-git-guide-zh.md).
+
 - [Control desktop PyMOL with co-PyMOL](install-co-pymol.md): connect Codex,
   Claude Code or Cursor to your live PyMOL session, then enable Blender rendering.
 - [Install molblender-studio in Claude](install-claude.md): build the complete

@@ -1,2 +1,5 @@
 # Public structures retain the exact upstream bytes recorded in structures.json.
 examples/*.cif -whitespace
+# Generated data is byte-checked during packaging, including Windows checkouts.
+mol_blender/render_defaults.json text eol=lf
+mol_blender/style.schema.json text eol=lf

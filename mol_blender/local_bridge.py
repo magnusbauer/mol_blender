@@ -18,6 +18,7 @@ def controller_environment():
     for name in ('PYTHONHOME', 'PYTHONEXECUTABLE', '__PYVENV_LAUNCHER__'):
         env.pop(name, None)
     env['PYTHONPATH'] = str(Path(__file__).resolve().parent.parent)
+    env['PYTHONUTF8'] = '1'
     return env
 
 

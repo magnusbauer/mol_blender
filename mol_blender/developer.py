@@ -96,6 +96,10 @@ def isolated_environment(root: Path) -> dict[str, str]:
                PYMOL_BRIDGE_TMP_ROOT=str(root / "runs"),
                XDG_CACHE_HOME=str(root / "cache"), BLENDER_USER_CONFIG=str(root / "blender-config"),
                BLENDER_USER_RESOURCES=str(root / "blender-resources"))
+    if os.name == 'nt':
+        env.update(TEMP=str(root / 'tmp'), TMP=str(root / 'tmp'),
+                   USERPROFILE=str(root / 'home'), APPDATA=str(root / 'config'),
+                   LOCALAPPDATA=str(root / 'cache'), PYTHONUTF8='1')
     return env
 
 
@@ -174,9 +178,11 @@ def preview(*, checkout: Path, bundle: Path, options: dict, catalog_dir: Path,
         config_path = run / "preview.json"
         config_path.write_text(json.dumps(config, indent=2, allow_nan=False))
         with (output / "preview.log").open("w") as log:
-            process = subprocess.Popen([sys.executable, "-B", "-I", str(run / "source/mol_blender/developer.py"),
+            from mol_blender.platform_support import owned_process
+            process_owner = owned_process([sys.executable, "-B", "-I", str(run / "source/mol_blender/developer.py"),
                                         "_run", str(config_path)], cwd=run, env=isolated_environment(run),
-                                       stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+                                       stdout=log, stderr=subprocess.STDOUT)
+            process = process_owner.__enter__()
             try:
                 deadline = time.monotonic() + timeout + 30
                 while True:
@@ -190,15 +196,9 @@ def preview(*, checkout: Path, bundle: Path, options: dict, catalog_dir: Path,
                         break
                     except subprocess.TimeoutExpired:
                         continue
-            except BaseException:
-                # The runner owns Blender and movie encoding in this group.
-                # Reap it before reporting cancellation or removing its snapshot.
-                try:
-                    os.killpg(process.pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
-                process.wait()
-                raise
+            finally:
+                # Reap owned descendants before removing their source snapshot.
+                process_owner.__exit__(None, None, None)
         if code:
             raise RuntimeError("Preview failed; see " + str(output / "preview.log"))
         return json.loads((output / "preview.json").read_text())
@@ -206,7 +206,8 @@ def preview(*, checkout: Path, bundle: Path, options: dict, catalog_dir: Path,
         if keep_source:
             (output / "retained-source.txt").write_text(str(run) + "\n")
         else:
-            shutil.rmtree(run)
+            from mol_blender.platform_support import remove_tree
+            remove_tree(run)
 
 
 def _run(config_path: Path) -> None:
